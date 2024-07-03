@@ -47,7 +47,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 			char ServerMsg[100];
 			int MsgSize;
-			char* temp;
+			char* ClientMsg;
 
 			do {
 				cout << "Server: ";
@@ -60,12 +60,23 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 				Connector.Send(ServerMsg, MsgSize, 0);
 
 				Connector.Receive((char*)&MsgSize, sizeof(int), 0);
-				temp = new char[MsgSize + 1];
-				Connector.Receive((char*)temp, MsgSize, 0);
+				ClientMsg = new char[MsgSize + 1];
+				Connector.Receive((char*)ClientMsg, MsgSize, 0);
 
-				temp[MsgSize] = '\0';
-				cout << "Client: " << temp << "\n";
-				delete temp;
+				ClientMsg[MsgSize] = '\0';
+				cout << "Client: " << ClientMsg << "\n";
+
+				if (strcmp(ClientMsg, "quit") == 0) {
+					cout << "Client quits connection!\n";
+					Connector.Close();
+					ServerSocket.Close();
+					
+					delete[] ClientMsg;
+					
+					return nRetCode;
+				}
+
+				delete[] ClientMsg;
 			} while (1);
 		}
 		Connector.Close();

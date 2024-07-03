@@ -31,15 +31,17 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 			char ClientMsg[100];
 			int MsgSize;
-			char* temp;
+			char* ServerMsg;
 
 			do {
 				ClientSocket.Receive((char*)&MsgSize, sizeof(int), 0);
-				temp = new char[MsgSize + 1];
-				ClientSocket.Receive((char*)temp, MsgSize, 0);
+				ServerMsg = new char[MsgSize + 1];
+				ClientSocket.Receive((char*)ServerMsg, MsgSize, 0);
 
-				temp[MsgSize] = '\0';
-				cout << "Server: " << temp << "\n";
+				ServerMsg[MsgSize] = '\0';
+				cout << "Server: " << ServerMsg << "\n";
+
+				delete[] ServerMsg;
 
 				cout << "Client: ";
 				cin.getline(ClientMsg, 100);
@@ -49,7 +51,13 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 				ClientSocket.Send((char*)&MsgSize, sizeof(int), 0);
 
 				ClientSocket.Send(ClientMsg, MsgSize, 0);
-				delete temp;
+				
+				if (strcmp(ClientMsg, "quit") == 0) {
+					ClientSocket.Close();
+
+					return nRetCode;
+				}
+
 			} while (1);
 		}
 		else cout << "Server connection failed!\n";
