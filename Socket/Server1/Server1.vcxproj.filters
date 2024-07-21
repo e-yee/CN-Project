@@ -37,8 +37,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="Resource Files\downloadfile.txt">
+    <Text Include="Resource Files\download.txt">
       <Filter>Resource Files</Filter>
     </Text>
+    <Text Include="ngu.txt" />
   </ItemGroup>
 </Project>
