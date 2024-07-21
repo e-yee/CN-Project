@@ -49,7 +49,6 @@ void uploadProcess(string file_name, CSocket &connector) {
 	ifs.seekg(0, ios::beg);
 
 	connector.Send(&r_size, sizeof(int), 0);
-	cout << r_size << "\n";
 
 	int chunk_size = 10240;
 	char chunk[10240];
@@ -61,7 +60,6 @@ void uploadProcess(string file_name, CSocket &connector) {
 			connector.Receive((char*)&error, sizeof(int), 0);
 
 			if (error != 10240) {
-				cout << "Resend\n";
 				_flushall();
 				ifs.seekg(-10240, ios::cur);
 				
@@ -87,7 +85,6 @@ void uploadProcess(string file_name, CSocket &connector) {
 		chunk_size = r_size;
 		char* ptr_chunk = new char[chunk_size];
 
-		cout << chunk_size << "\n";
 		ifs.read(chunk, chunk_size);
 
 		connector.Send(&chunk_size, sizeof(int), 0);
