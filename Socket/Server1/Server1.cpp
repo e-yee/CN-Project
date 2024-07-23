@@ -45,54 +45,82 @@ void uploadProcess(string file_name, CSocket &connector) {
 
 	cout << "Process starts\n";
 	ifs.seekg(0, ios::end);
-	int r_size = ifs.tellg();
+	int real_size = ifs.tellg();
 	ifs.seekg(0, ios::beg);
 
-	connector.Send(&r_size, sizeof(int), 0);
+	connector.Send(&real_size, sizeof(int), 0);
 
+	int byte_sent = 0;
+	int byte_received = 0;
+	int byte_offset = 0;
 	int chunk_size = 10240;
-	char chunk[10240];
-	int error = 0;
-	bool first_time = true;
+	char chunk[10240] = {};
 
-	while (r_size >= 10240) {
-		if (!first_time) {
-			connector.Receive((char*)&error, sizeof(int), 0);
+	while (real_size >= 10240) {
+		ifs.read(chunk, chunk_size);
 
-			if (error != 10240) {
-				_flushall();
-				ifs.seekg(-10240, ios::cur);
-				
-				ifs.read(chunk, chunk_size);
+		byte_sent = chunk_size;
+		connector.Send(&byte_sent, sizeof(int), 0);
+		connector.Send(chunk, byte_sent, 0);
 
-				connector.Send(&chunk_size, sizeof(int), 0);
-				connector.Send(chunk, chunk_size, 0);
+		connector.Receive((char*)&byte_received, sizeof(int), 0);
 
-				continue;
-			}
+		while (byte_received == -1) {
+			connector.Send(&byte_sent, sizeof(int), 0);
+			connector.Send(chunk, byte_sent, 0);
+
+			connector.Receive((char*)&byte_received, sizeof(int), 0);
 		}
 
-		ifs.read(chunk, chunk_size);
+		while (byte_received < byte_sent) {
+			byte_sent -= byte_received;
+			ifs.seekg(-byte_sent, ios::cur);
+			ifs.read(chunk, byte_sent);
 
-		connector.Send(&chunk_size, sizeof(int), 0);
-		connector.Send(chunk, chunk_size, 0);
+			connector.Send(&byte_sent, sizeof(int), 0);
+			connector.Send(chunk, byte_sent, 0);
 
-		r_size -= 10240;
-		first_time = false;
+			connector.Receive((char*)&byte_received, sizeof(int), 0);
+
+			while (byte_received == -1) {
+				connector.Send(&byte_sent, sizeof(int), 0);
+				connector.Send(chunk, byte_sent, 0);
+
+				connector.Receive((char*)&byte_received, sizeof(int), 0);
+			}
+		}
+		real_size -= 10240;
 	}
 
-	if (r_size > 0) {
-		chunk_size = r_size;
-		char* ptr_chunk = new char[chunk_size];
+	if (real_size > 0) {
+		byte_sent = byte_received = 0;
+		char* rest_chunk;
+		do {
+			real_size -= byte_received;
+			rest_chunk = new char[real_size];
 
-		ifs.read(chunk, chunk_size);
+			byte_offset = byte_sent - byte_received;
+			ifs.seekg(-byte_offset, ios::cur);
+			ifs.read(rest_chunk, real_size);
 
-		connector.Send(&chunk_size, sizeof(int), 0);
-		connector.Send(ptr_chunk, chunk_size, 0);
+			byte_sent = real_size;
+			connector.Send(&byte_sent, sizeof(int), 0);
+			connector.Send(rest_chunk, byte_sent, 0);
 
-		delete[] ptr_chunk;
+			connector.Receive((char*)&byte_received, sizeof(int), 0);
+
+			while (byte_received == -1) {
+				connector.Send(&byte_sent, sizeof(int), 0);
+				connector.Send(rest_chunk, byte_sent, 0);
+
+				connector.Receive((char*)&byte_received, sizeof(int), 0);
+			}
+
+			delete[] rest_chunk;
+
+			if (byte_received == byte_sent) break;
+		} while (1);
 	}
-
 	ifs.close();
 }
 
