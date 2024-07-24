@@ -66,7 +66,7 @@ void uploadProcess(string file_name, CSocket &connector) {
 		connector.Receive((char*)&bytes_received, sizeof(int), 0);
 
 		//Resend if Client cannot receive data chunk
-		while (bytes_received == -1) {
+		while (bytes_received == -1 || bytes_received == 0) {
 			connector.Send(&bytes_sent, sizeof(int), 0);
 			connector.Send(chunk, bytes_sent, 0);
 
@@ -85,7 +85,7 @@ void uploadProcess(string file_name, CSocket &connector) {
 			connector.Receive((char*)&bytes_received, sizeof(int), 0);
 
 			//Resend if Client cannot receive data chunk
-			while (bytes_received == -1) {
+			while (bytes_received == -1 || bytes_received == 0) {
 				connector.Send(&bytes_sent, sizeof(int), 0);
 				connector.Send(chunk, bytes_sent, 0);
 
@@ -111,7 +111,7 @@ void uploadProcess(string file_name, CSocket &connector) {
 		connector.Receive((char*)&bytes_received, sizeof(int), 0);
 
 		//Resend if Client cannot receive data chunk
-		while (bytes_received == -1) {
+		while (bytes_received == -1 || bytes_received == 0) {
 			connector.Send(&bytes_sent, sizeof(int), 0);
 			connector.Send(rest_chunk, bytes_sent, 0);
 
