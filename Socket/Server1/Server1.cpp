@@ -50,77 +50,78 @@ void uploadProcess(string file_name, CSocket &connector) {
 
 	connector.Send(&real_size, sizeof(int), 0);
 
-	int byte_sent = 0;
-	int byte_received = 0;
-	int byte_offset = 0;
+	int bytes_sent = 0;
+	int bytes_received = 0;
+	int bytes_offset = 0;
 	int chunk_size = 10240;
 	char chunk[10240] = {};
 
 	while (real_size >= 10240) {
 		ifs.read(chunk, chunk_size);
 
-		byte_sent = chunk_size;
-		connector.Send(&byte_sent, sizeof(int), 0);
-		connector.Send(chunk, byte_sent, 0);
+		bytes_sent = chunk_size;
+		connector.Send(&bytes_sent, sizeof(int), 0);
+		connector.Send(chunk, bytes_sent, 0);
 
-		connector.Receive((char*)&byte_received, sizeof(int), 0);
+		connector.Receive((char*)&bytes_received, sizeof(int), 0);
 
-		while (byte_received == -1) {
-			connector.Send(&byte_sent, sizeof(int), 0);
-			connector.Send(chunk, byte_sent, 0);
+		//Resend if Client cannot receive data chunk
+		while (bytes_received == -1) {
+			connector.Send(&bytes_sent, sizeof(int), 0);
+			connector.Send(chunk, bytes_sent, 0);
 
-			connector.Receive((char*)&byte_received, sizeof(int), 0);
+			connector.Receive((char*)&bytes_received, sizeof(int), 0);
 		}
 
-		while (byte_received < byte_sent) {
-			byte_sent -= byte_received;
-			ifs.seekg(-byte_sent, ios::cur);
-			ifs.read(chunk, byte_sent);
+		//Send the rest until Client receives full data chunk
+		while (bytes_received < bytes_sent) {
+			bytes_sent -= bytes_received;
+			ifs.seekg(-bytes_sent, ios::cur);
+			ifs.read(chunk, bytes_sent);
 
-			connector.Send(&byte_sent, sizeof(int), 0);
-			connector.Send(chunk, byte_sent, 0);
+			connector.Send(&bytes_sent, sizeof(int), 0);
+			connector.Send(chunk, bytes_sent, 0);
 
-			connector.Receive((char*)&byte_received, sizeof(int), 0);
+			connector.Receive((char*)&bytes_received, sizeof(int), 0);
 
-			while (byte_received == -1) {
-				connector.Send(&byte_sent, sizeof(int), 0);
-				connector.Send(chunk, byte_sent, 0);
+			//Resend if Client cannot receive data chunk
+			while (bytes_received == -1) {
+				connector.Send(&bytes_sent, sizeof(int), 0);
+				connector.Send(chunk, bytes_sent, 0);
 
-				connector.Receive((char*)&byte_received, sizeof(int), 0);
+				connector.Receive((char*)&bytes_received, sizeof(int), 0);
 			}
 		}
-		real_size -= 10240;
+		real_size -= chunk_size;
 	}
 
-	if (real_size > 0) {
-		byte_sent = byte_received = 0;
-		char* rest_chunk;
-		do {
-			real_size -= byte_received;
-			rest_chunk = new char[real_size];
+	bytes_sent = bytes_received = 0;
+	char* rest_chunk;
+	while (real_size > 0) {
+		rest_chunk = new char[real_size];
 
-			byte_offset = byte_sent - byte_received;
-			ifs.seekg(-byte_offset, ios::cur);
-			ifs.read(rest_chunk, real_size);
+		bytes_offset = bytes_sent - bytes_received;
+		ifs.seekg(-bytes_offset, ios::cur);
+		ifs.read(rest_chunk, real_size);
 
-			byte_sent = real_size;
-			connector.Send(&byte_sent, sizeof(int), 0);
-			connector.Send(rest_chunk, byte_sent, 0);
+		bytes_sent = real_size;
+		connector.Send(&bytes_sent, sizeof(int), 0);
+		connector.Send(rest_chunk, bytes_sent, 0);
 
-			connector.Receive((char*)&byte_received, sizeof(int), 0);
+		connector.Receive((char*)&bytes_received, sizeof(int), 0);
 
-			while (byte_received == -1) {
-				connector.Send(&byte_sent, sizeof(int), 0);
-				connector.Send(rest_chunk, byte_sent, 0);
+		//Resend if Client cannot receive data chunk
+		while (bytes_received == -1) {
+			connector.Send(&bytes_sent, sizeof(int), 0);
+			connector.Send(rest_chunk, bytes_sent, 0);
 
-				connector.Receive((char*)&byte_received, sizeof(int), 0);
-			}
+			connector.Receive((char*)&bytes_received, sizeof(int), 0);
+		}
 
-			delete[] rest_chunk;
-
-			if (byte_received == byte_sent) break;
-		} while (1);
+		real_size -= bytes_received;
+		delete[] rest_chunk;
 	}
+	
 	ifs.close();
 }
 
