@@ -151,7 +151,7 @@ bool receiveDownloadData(string file_name)
 		ClientSocket.Send(&bytes_received, sizeof(int), 0);
 
 		//Server resends until Client can receive data chunk
-		while (bytes_received == -1) {
+		while (bytes_received == -1 || bytes_received == 0) {
 			ClientSocket.Receive((char*)&buffer_size, sizeof(int), 0);
 			bytes_received = ClientSocket.Receive(buffer, buffer_size, 0);
 
@@ -168,7 +168,7 @@ bool receiveDownloadData(string file_name)
 			ClientSocket.Send(&bytes_received, sizeof(int), 0);
 
 			//Server resends until Client can receive data chunk
-			while (bytes_received == -1) {
+			while (bytes_received == -1 || bytes_received == 0) {
 				ClientSocket.Receive((char*)&buffer_size, sizeof(int), 0);
 				bytes_received = ClientSocket.Receive(buffer, buffer_size, 0);
 
@@ -191,7 +191,7 @@ bool receiveDownloadData(string file_name)
 		ClientSocket.Send(&bytes_received, sizeof(int), 0);
 
 		//Server resends until Client can receive data chunk
-		while (bytes_received == -1) {
+		while (bytes_received == -1 || bytes_received == 0) {
 			ClientSocket.Receive((char*)&buffer_size, sizeof(int), 0);
 			bytes_received = ClientSocket.Receive(rest_buffer, buffer_size, 0);
 
@@ -236,10 +236,18 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	}
 
 	ClientSocket.Create();
-	if (ClientSocket.Connect(_T("127.0.0.1"), 1234) == 0)
+	int try_time = 0;
+	while (ClientSocket.Connect(_T("127.0.0.1"), 1234) == 0)
 	{
 		cout << "Server connection fucked\n";
-		return nRetCode;
+		cout << "Press Any key to try again\n";
+		char ass = _getch();
+		Sleep(500);
+		try_time++;
+		if (try_time >= 3) {
+			cout << "Server connection absolutely fucked\n";
+			return nRetCode;
+		}
 	}
 	cout << "Server connection succeeded\n";
 
@@ -258,7 +266,6 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 			{
 				//file done
 				cout << "file done!\n";
-				signalHandler(1);
 			}
 			requesting_files.pop();
 		}
