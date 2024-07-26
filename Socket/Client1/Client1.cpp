@@ -71,8 +71,6 @@ void registerRequestingFiles(queue<string>& requesting_files)
 	}
 
 	file.close();
-	ofstream file1(fuck);
-	file1.close();
 }
 
 bool receiveDownloadData(string file_name)
@@ -208,14 +206,25 @@ bool receiveDownloadData(string file_name)
 	return true;
 }
 
-bool processRequestingFile(queue<string>& requesting_files)
+bool processRequestingFile(queue<string> requesting_files)
 {
 	if (requesting_files.empty()) return false;
 
-	int file_size = requesting_files.front().size();
+	string message = "";
 
-	ClientSocket.Send(&file_size, sizeof(file_size), 0);
-	ClientSocket.Send(requesting_files.front().c_str(), file_size, 0);
+	while (!requesting_files.empty()) {
+		if (requesting_files.size() == 1) 
+			message += requesting_files.front();
+		else
+			message += requesting_files.front() + "\n";
+
+		requesting_files.pop();
+	}
+	int message_size = message.size();
+
+	ClientSocket.Send(&message_size, sizeof(int), 0);
+	ClientSocket.Send(message.c_str(), message_size, 0);
+
 	return true;
 }
 
@@ -254,22 +263,32 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	registerAvailibleFile();
 
 	queue<string> requesting_files;
-
-	while (1)
+	string file_download;
+	int response = 0;
+	//response = 0: file has been downloaded
+	//response = 2: all files have been downloaded
+	while (response != 2)
 	{
 		registerRequestingFiles(requesting_files);
 		processRequestingFile(requesting_files);
-		if (!requesting_files.empty())
-		{
-			cout << "downloading...\n";
-			if (receiveDownloadData(requesting_files.front()))
-			{
-				//file done
-				cout << "file done!\n";
+
+		while (!requesting_files.empty()) {
+			file_download = requesting_files.front();
+
+			ClientSocket.Receive((char*)&response, sizeof(int), 0);
+
+			if (response == 1) {
+				cout << "Downloading...";
+				if (receiveDownloadData(file_download))
+					cout << "File done\n";
 			}
+			else if (response == 2) {
+				cout << "Client has download all downloadable files\n";
+				break;
+			}
+
 			requesting_files.pop();
 		}
-		Sleep(100);
 	}
 	ClientSocket.Close();
 

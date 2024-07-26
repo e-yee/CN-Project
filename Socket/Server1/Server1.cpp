@@ -10,9 +10,24 @@ CWinApp theApp;
 
 using namespace std;
 
+CSocket server_socket;
+
 struct File {
 	string name, size;
 };
+
+void signalHandler(int signum)
+{
+	const char* termination_message = "404 - Server disconnection";
+	int message_size = static_cast<int>(strlen(termination_message));
+
+	if (server_socket.m_hSocket != INVALID_SOCKET) {
+		server_socket.Send(&message_size, sizeof(message_size), 0);
+		server_socket.Send(termination_message, message_size, 0);
+		server_socket.Close();
+	}
+	exit(signum);
+}
 
 vector<File> getFileList(string file_name) {
 	vector<File> v;
@@ -34,6 +49,36 @@ vector<File> getFileList(string file_name) {
 	ifs.close();
 
 	return v;
+}
+
+void sendFileList(vector<File> &file_list, CSocket& connector) {
+	string file_name = "Resource Files\\download.txt";
+	file_list = getFileList(file_name);
+
+	string list = file_list[0].name + " " + file_list[0].size + "\n";
+	for (int i = 1; i < file_list.size(); i++) {
+		if (i < file_list.size() - 1)
+			list += file_list[i].name + " " + file_list[i].size + "\n";
+		else
+			list += file_list[i].name + " " + file_list[i].size;
+	}
+	int list_size = list.size();
+
+	connector.Send(&list_size, sizeof(int), 0);
+	connector.Send(list.c_str(), list_size, 0);
+}
+
+queue<string> getRequestingList(string message) {
+	queue<string> q;
+	stringstream ss(message);
+	string file;
+
+	while (ss.good()) {
+		getline(ss, file);
+		q.push(file);
+	}
+
+	return q;
 }
 
 void uploadProcess(string file_name, CSocket &connector) {
@@ -121,11 +166,14 @@ void uploadProcess(string file_name, CSocket &connector) {
 		real_size -= bytes_received;
 		delete[] rest_chunk;
 	}
-	
+	cout << "Uploading completed!\n";
+
 	ifs.close();
 }
 
 int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
+	signal(SIGINT, signalHandler);
+
 	int n_ret_code = 0;
 
 	if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0)) {
@@ -137,8 +185,6 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 			cout << "Socket Library initialization failed\n";
 			return FALSE;
 		}
-
-		CSocket server_socket;
 
 		if (server_socket.Create(1234, SOCK_STREAM, NULL) == 0) {
 			cout << "Server initialization failed\n";
@@ -162,43 +208,60 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 			if (server_socket.Accept(connector)) {
 				cout << "Client connected to Server!\n";
 
-				//Sending list of files to client
-				string file_name = "Resource Files\\download.txt";
-				vector<File> file_list = getFileList(file_name);
-
-				string list = file_list[0].name + " " + file_list[0].size + "\n";
-				for (int i = 1; i < file_list.size(); i++) {
-					if (i < file_list.size() - 1)
-						list += file_list[i].name + " " + file_list[i].size + "\n";
-					else
-						list += file_list[i].name + " " + file_list[i].size;
-				}
-				int list_size = list.size();
-
-				connector.Send(&list_size, sizeof(int), 0);
-				connector.Send(list.c_str(), list_size, 0);
-
+				vector<File> file_list;
+				sendFileList(file_list, connector);
+				
 				//Uploading process
-				int msg_size;
-				char* msg;
+				int message_size = 0;
+				char* message;
+				
 				do {
-					connector.Receive((char*)&msg_size, sizeof(int), 0);
-					msg = new char[msg_size + 1];
-					connector.Receive(msg, msg_size, 0);
-					msg[msg_size] = '\0';
+					connector.Receive((char*)&message_size, sizeof(int), 0);
+					message = new char[message_size + 1];
+					connector.Receive(message, message_size, 0);
+					message[message_size] = '\0';
 
-					for (int i = 0; i < file_list.size(); i++) {
-						if (strcmp(file_list[i].name.c_str(), msg) == 0) {
-							uploadProcess(file_list[i].name, connector);
-							cout << "Uploading completed\n";
-							file_list.erase(file_list.begin() + i);
-							break;
-						}
+					if (strcmp(message, "1111 - Disconnect from Server") == 0) {
+						cout << "Client disconnected from Server!\n";
+						break;
 					}
 
-					//Breaking when server catch ctrl-c from client
-					if (strcmp(msg, "1111 - Disconnect from Server") == 0) {
-						cout << "Client disconnected from Server\n";
+					queue<string> requesting_list = getRequestingList(message);
+					string requesting_file;
+					int found = -1;
+					int response;
+
+					while (!requesting_list.empty()) {
+						found = -1;
+						requesting_file = requesting_list.front();
+						cout << requesting_file << "\n";
+						
+						for (int i = 0; i < file_list.size(); ++i) 
+							if (requesting_file == file_list[i].name) {
+								found = i;
+								break;
+							}
+
+						if (found != -1) {
+							response = 1;
+							connector.Send(&response, sizeof(int), 0);
+
+							uploadProcess(requesting_file, connector);
+
+							file_list.erase(file_list.begin() + found);
+						}
+						else {
+							response = 0;
+							connector.Send(&response, sizeof(int), 0);
+						}
+
+						requesting_list.pop();
+					}
+
+					if (file_list.empty()) {
+						response = 2;
+						connector.Send(&response, sizeof(int), 0);
+						cout << "Client has download all downloadable files!\n";
 						break;
 					}
 				} while (1);
