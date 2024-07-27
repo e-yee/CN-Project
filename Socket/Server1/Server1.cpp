@@ -68,19 +68,6 @@ void sendFileList(vector<File> &file_list, CSocket& connector) {
 	connector.Send(list.c_str(), list_size, 0);
 }
 
-queue<string> getRequestingList(string message) {
-	queue<string> q;
-	stringstream ss(message);
-	string file;
-
-	while (ss.good()) {
-		getline(ss, file);
-		q.push(file);
-	}
-
-	return q;
-}
-
 void uploadProcess(string file_name, CSocket &connector) {
 	ifstream ifs(file_name.c_str(), ios::binary);
 	if (!ifs.is_open()) {
@@ -212,8 +199,10 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 				sendFileList(file_list, connector);
 				
 				//Uploading process
+				int response = -1;
 				int message_size = 0;
 				char* message;
+				string requesting_file;
 				
 				do {
 					connector.Receive((char*)&message_size, sizeof(int), 0);
@@ -226,44 +215,27 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 						break;
 					}
 
-					queue<string> requesting_list = getRequestingList(message);
-					string requesting_file;
-					int found = -1;
-					int response;
+					requesting_file = message;
+					response = -1;
 
-					while (!requesting_list.empty()) {
-						found = -1;
-						requesting_file = requesting_list.front();
-						cout << requesting_file << "\n";
-						
-						for (int i = 0; i < file_list.size(); ++i) 
-							if (requesting_file == file_list[i].name) {
-								found = i;
-								break;
-							}
-
-						if (found != -1) {
+					for (int i = 0; i < file_list.size(); ++i)
+						if (file_list[i].name == requesting_file) {
 							response = 1;
-							connector.Send(&response, sizeof(int), 0);
 
 							uploadProcess(requesting_file, connector);
-
-							file_list.erase(file_list.begin() + found);
+							file_list.erase(file_list.begin() + i);
+							break;
 						}
-						else {
-							response = 0;
-							connector.Send(&response, sizeof(int), 0);
-						}
-
-						requesting_list.pop();
-					}
-
+						
 					if (file_list.empty()) {
-						response = 2;
-						connector.Send(&response, sizeof(int), 0);
-						cout << "Client has download all downloadable files!\n";
+						response = 0;
+
+						cout << "Client has downloaded all files\n";
+						connector.Send((char*)&response, sizeof(int), 0);
+
 						break;
 					}
+					connector.Send((char*)&response, sizeof(int), 0);
 				} while (1);
 			}
 			connector.Close();
