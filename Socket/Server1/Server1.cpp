@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Server1.h"
+#include <vector>
 #include <afxsock.h>
 
 #ifdef _DEBUG
