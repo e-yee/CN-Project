@@ -11,9 +11,24 @@ CWinApp theApp;
 
 using namespace std;
 
+CSocket server_socket;
+
 struct File {
 	string name, size;
 };
+
+void signalHandler(int signum)
+{
+	const char* termination_message = "404 - Server disconnection";
+	int message_size = static_cast<int>(strlen(termination_message));
+
+	if (server_socket.m_hSocket != INVALID_SOCKET) {
+		server_socket.Send(&message_size, sizeof(message_size), 0);
+		server_socket.Send(termination_message, message_size, 0);
+		server_socket.Close();
+	}
+	exit(signum);
+}
 
 vector<File> getFileList(string file_name) {
 	vector<File> v;
@@ -35,6 +50,23 @@ vector<File> getFileList(string file_name) {
 	ifs.close();
 
 	return v;
+}
+
+void sendFileList(vector<File> &file_list, CSocket& connector) {
+	string file_name = "Resource Files\\download.txt";
+	file_list = getFileList(file_name);
+
+	string list = file_list[0].name + " " + file_list[0].size + "\n";
+	for (int i = 1; i < file_list.size(); i++) {
+		if (i < file_list.size() - 1)
+			list += file_list[i].name + " " + file_list[i].size + "\n";
+		else
+			list += file_list[i].name + " " + file_list[i].size;
+	}
+	int list_size = list.size();
+
+	connector.Send(&list_size, sizeof(int), 0);
+	connector.Send(list.c_str(), list_size, 0);
 }
 
 void uploadProcess(string file_name, CSocket &connector) {
@@ -122,11 +154,14 @@ void uploadProcess(string file_name, CSocket &connector) {
 		real_size -= bytes_received;
 		delete[] rest_chunk;
 	}
-	
+	cout << "Uploading completed!\n";
+
 	ifs.close();
 }
 
 int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
+	signal(SIGINT, signalHandler);
+
 	int n_ret_code = 0;
 
 	if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0)) {
@@ -138,8 +173,6 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 			cout << "Socket Library initialization failed\n";
 			return FALSE;
 		}
-
-		CSocket server_socket;
 
 		if (server_socket.Create(1234, SOCK_STREAM, NULL) == 0) {
 			cout << "Server initialization failed\n";
@@ -163,45 +196,47 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 			if (server_socket.Accept(connector)) {
 				cout << "Client connected to Server!\n";
 
-				//Sending list of files to client
-				string file_name = "Resource Files\\download.txt";
-				vector<File> file_list = getFileList(file_name);
-
-				string list = file_list[0].name + " " + file_list[0].size + "\n";
-				for (int i = 1; i < file_list.size(); i++) {
-					if (i < file_list.size() - 1)
-						list += file_list[i].name + " " + file_list[i].size + "\n";
-					else
-						list += file_list[i].name + " " + file_list[i].size;
-				}
-				int list_size = list.size();
-
-				connector.Send(&list_size, sizeof(int), 0);
-				connector.Send(list.c_str(), list_size, 0);
-
+				vector<File> file_list;
+				sendFileList(file_list, connector);
+				
 				//Uploading process
-				int msg_size;
-				char* msg;
+				int response = -1;
+				int message_size = 0;
+				char* message;
+				string requesting_file;
+				
 				do {
-					connector.Receive((char*)&msg_size, sizeof(int), 0);
-					msg = new char[msg_size + 1];
-					connector.Receive(msg, msg_size, 0);
-					msg[msg_size] = '\0';
+					connector.Receive((char*)&message_size, sizeof(int), 0);
+					message = new char[message_size + 1];
+					connector.Receive(message, message_size, 0);
+					message[message_size] = '\0';
 
-					for (int i = 0; i < file_list.size(); i++) {
-						if (strcmp(file_list[i].name.c_str(), msg) == 0) {
-							uploadProcess(file_list[i].name, connector);
-							cout << "Uploading completed\n";
+					if (strcmp(message, "1111 - Disconnect from Server") == 0) {
+						cout << "Client disconnected from Server!\n";
+						break;
+					}
+
+					requesting_file = message;
+					response = -1;
+
+					for (int i = 0; i < file_list.size(); ++i)
+						if (file_list[i].name == requesting_file) {
+							response = 1;
+
+							uploadProcess(requesting_file, connector);
 							file_list.erase(file_list.begin() + i);
 							break;
 						}
-					}
+						
+					if (file_list.empty()) {
+						response = 0;
 
-					//Breaking when server catch ctrl-c from client
-					if (strcmp(msg, "1111 - Disconnect from Server") == 0) {
-						cout << "Client disconnected from Server\n";
+						cout << "Client has downloaded all files\n";
+						connector.Send((char*)&response, sizeof(int), 0);
+
 						break;
 					}
+					connector.Send((char*)&response, sizeof(int), 0);
 				} while (1);
 			}
 			connector.Close();

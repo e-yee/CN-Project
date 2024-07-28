@@ -27,8 +27,14 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <cstring>
+#include <cstdlib>
+#include <csignal>
+#include <conio.h>
+#include <algorithm>
 #include <vector>
+#include <queue>
 
 // TODO: reference additional headers your program requires here

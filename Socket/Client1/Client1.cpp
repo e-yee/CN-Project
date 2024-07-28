@@ -71,8 +71,6 @@ void registerRequestingFiles(queue<string>& requesting_files)
 	}
 
 	file.close();
-	ofstream file1(fuck);
-	file1.close();
 }
 
 bool receiveDownloadData(string file_name)
@@ -139,6 +137,8 @@ bool receiveDownloadData(string file_name)
 
 	int file_size = 0;
 	ClientSocket.Receive((char*)&file_size, sizeof(int), 0);
+	int total = file_size;
+	int part = 0;
 
 	int bytes_received = 0;
 	int buffer_size = 0;
@@ -178,6 +178,8 @@ bool receiveDownloadData(string file_name)
 
 		ofs.write(buffer, bytes_received);
 		file_size -= 10240;
+		part += 10240;
+		cout << "Downloading " << file_name << " " << (1.0 * part / total) * 100 << "\n";
 	}
 
 	bytes_received = 0;
@@ -208,14 +210,16 @@ bool receiveDownloadData(string file_name)
 	return true;
 }
 
-bool processRequestingFile(queue<string>& requesting_files)
+bool processRequestingFile(queue<string> requesting_files)
 {
 	if (requesting_files.empty()) return false;
+	
+	string message = requesting_files.front();
+	int message_size = message.size();
 
-	int file_size = requesting_files.front().size();
+	ClientSocket.Send(&message_size, sizeof(int), 0);
+	ClientSocket.Send(message.c_str(), message_size, 0);
 
-	ClientSocket.Send(&file_size, sizeof(file_size), 0);
-	ClientSocket.Send(requesting_files.front().c_str(), file_size, 0);
 	return true;
 }
 
@@ -254,22 +258,37 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	registerAvailibleFile();
 
 	queue<string> requesting_files;
+	vector<string> downloaded;
+	string file_download;
+	int response = -1;
 
-	while (1)
-	{
+	while (1) {
 		registerRequestingFiles(requesting_files);
-		processRequestingFile(requesting_files);
-		if (!requesting_files.empty())
-		{
-			cout << "downloading...\n";
-			if (receiveDownloadData(requesting_files.front()))
-			{
-				//file done
-				cout << "file done!\n";
+
+		if (!requesting_files.empty()) {
+			while (find(downloaded.begin(), downloaded.end(), requesting_files.front()) != downloaded.end()) {
+				requesting_files.pop();
+
+				if (requesting_files.empty()) break;
+			}
+		}
+
+		while (!requesting_files.empty()) {
+			processRequestingFile(requesting_files);
+
+			if (receiveDownloadData(requesting_files.front())) {
+				downloaded.push_back(requesting_files.front());
+				cout << "Downloading " << requesting_files.front() << " 100%\n";
 			}
 			requesting_files.pop();
+
+			ClientSocket.Receive(&response, sizeof(int), 0);
 		}
-		Sleep(100);
+
+		if (response == 0) {
+			cout << "Client has download all files so fuck off\n";
+			break;
+		}
 	}
 	ClientSocket.Close();
 
