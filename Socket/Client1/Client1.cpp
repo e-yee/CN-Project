@@ -32,9 +32,9 @@ void displayDownloadProgress(float progress, float total, string file_name)
 
 	cout << "\rDownloading: " << "\"" << file_name << "\"" << ": [";
 
-	if (percentage == 1) {
-		for (int i = 0; i < 20; i++) {
-			cout << "\xDB";
+	if (percentage >= 1) {
+		for (int i = 0; i < 10; i++) {
+			cout << "\xDB\xDB";
 		}
 		cout << "] 100%";
 		return;
