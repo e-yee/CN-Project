@@ -26,7 +26,11 @@
 #endif // _AFX_NO_AFXCMN_SUPPORT
 
 #include <iostream>
-
+#include <queue>
+#include <iomanip>
+#include <fstream>
+#include <string>
+#include <csignal>
 
 
 // TODO: reference additional headers your program requires here
