@@ -8,6 +8,7 @@
 #include <vector>
 #include <queue>
 #include <string>
+#include <iomanip>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -29,7 +30,25 @@ void signalHandler(int signum)
 		ClientSocket.Send(termination_message, message_size, 0);
 		ClientSocket.Close();
 	}
+
+	ofstream file("input.txt");
+	file.close();
+
 	exit(signum);
+}
+
+void displayDownloadProgress(int progress, int total, string file_name)
+{
+	float percentage = progress / (1.0 * total);
+
+	cout << "\rDownloading: " << "\"" << file_name << "\"" << ": [";
+	cout << "                              ";
+	cout << percentage * 100 << setprecision(3) << "%";
+	for (float i = 0; i < percentage; i += 0.1) {
+		cout << "\xDB\xDB";
+	}
+
+	if (percentage == 1) cout << "]";
 }
 
 void registerAvailibleFile()
@@ -75,111 +94,55 @@ void registerRequestingFiles(queue<string>& requesting_files)
 
 bool receiveDownloadData(string file_name)
 {
-	////make a thread for this
-	//string path = "D:\\output\\" + file_name;
-	//ofstream file(path, ios::binary);
-	//ofstream debugging("debug.txt", ios::app);
-
-	//char buffer[10240];
-	//int buffer_size = 10240;
-
-	//int file_size = 0;
-	//float current_progress = 0;
-	//int bytes_received = 0;
-	//int a = 0; //debug
-
-	//ClientSocket.Receive((char*)(&file_size), sizeof(int), 0);
-	//debugging << file_size << "\n";
-	//int total_progress = file_size;
-
-	//int i = 0;
-	//while (file_size >= 10240)
-	//{
-	//	a = ClientSocket.Receive((char*)(&buffer_size), sizeof(int), 0);
-	//	bytes_received = ClientSocket.Receive(buffer, buffer_size, 0);
-
-	//	ClientSocket.Send(&bytes_received, sizeof(bytes_received), 0);
-
-	//	if (bytes_received != 10240)
-	//	{
-	//		cout << "wrong " << i << "\n";
-	//		_flushall();
-	//		continue;
-	//	}
-
-	//	cout << a << " | " << bytes_received << " | " << buffer_size << " | " << (current_progress / total_progress) * 100 << "%\n";
-	//	debugging << a << " | " << bytes_received << " | " << buffer_size << " | " << (current_progress / total_progress) * 100 << "%\n";
-
-	//	file_size -= 10240;
-	//	file.write(buffer, buffer_size);
-	//	current_progress += buffer_size;
-	//	i++;
-	//}
-	//
-	//if (file_size > 0)
-	//{
-	//	ClientSocket.Receive((char*)(&buffer_size), sizeof(int), 0);
-	//	char* ptr_buffer = new char[file_size];
-	//	bytes_received = ClientSocket.Receive(ptr_buffer, file_size, 0);
-
-	//	file.write(ptr_buffer, buffer_size);
-	//	delete[] ptr_buffer;
-
-	//	cout << a << " | " << bytes_received << " | " << buffer_size << " | " << (current_progress / total_progress) * 100 << "%\n";
-	//	debugging << a << " | " << bytes_received << " | " << buffer_size << " | " << (current_progress / total_progress) * 100 << "%\n";
-	//}
-
-	//debugging.close();
-	//file.close();
-
-	string path = "D:\\output\\" + file_name;
+	string path = "C:\\Users\\PC\\Desktop\\" + file_name;
 	ofstream ofs(path.c_str(), ios::binary);
+
+	int max_chunk_size = 10240;//
 
 	int file_size = 0;
 	ClientSocket.Receive((char*)&file_size, sizeof(int), 0);
 	int total = file_size;
 	int part = 0;
-
+	
+	int chunk = 10240;
 	int bytes_received = 0;
 	int buffer_size = 0;
 	char buffer[10240] = {};
 
 	while (file_size >= 10240) {
-		ClientSocket.Receive((char*)&buffer_size, sizeof(int), 0);
-		bytes_received = ClientSocket.Receive(buffer, buffer_size, 0);
+		chunk = 10240;
+		bytes_received = ClientSocket.Receive(buffer, chunk, 0);
 
 		ClientSocket.Send(&bytes_received, sizeof(int), 0);
 
 		//Server resends until Client can receive data chunk
 		while (bytes_received == -1 || bytes_received == 0) {
-			ClientSocket.Receive((char*)&buffer_size, sizeof(int), 0);
-			bytes_received = ClientSocket.Receive(buffer, buffer_size, 0);
-
+			bytes_received = ClientSocket.Receive(buffer, chunk, 0);
 			ClientSocket.Send(&bytes_received, sizeof(int), 0);
 		}
 
 		//Receive the rest of the data chunk
-		while (bytes_received < buffer_size) {
+		while (bytes_received < chunk) {
 			ofs.write(buffer, bytes_received);
+			chunk -= bytes_received;
 
-			ClientSocket.Receive((char*)&buffer_size, sizeof(int), 0);
-			bytes_received = ClientSocket.Receive(buffer, buffer_size, 0);
+			bytes_received = ClientSocket.Receive(buffer, chunk, 0);
 
 			ClientSocket.Send(&bytes_received, sizeof(int), 0);
 
 			//Server resends until Client can receive data chunk
 			while (bytes_received == -1 || bytes_received == 0) {
-				ClientSocket.Receive((char*)&buffer_size, sizeof(int), 0);
-				bytes_received = ClientSocket.Receive(buffer, buffer_size, 0);
-
+				bytes_received = ClientSocket.Receive(buffer, chunk, 0);
 				ClientSocket.Send(&bytes_received, sizeof(int), 0);
 			}
+
+			if (chunk == bytes_received) break;
 		}
 
 		ofs.write(buffer, bytes_received);
 		file_size -= 10240;
 		part += 10240;
-		cout << "Downloading " << file_name << " " << (1.0 * part / total) * 100 << "\n";
+		displayDownloadProgress(part, total, file_name);
 	}
 
 	bytes_received = 0;
@@ -187,15 +150,13 @@ bool receiveDownloadData(string file_name)
 	while (file_size > 0) {
 		rest_buffer = new char[file_size];
 
-		ClientSocket.Receive((char*)&buffer_size, sizeof(int), 0);
-		bytes_received = ClientSocket.Receive(rest_buffer, buffer_size, 0);
+		bytes_received = ClientSocket.Receive(rest_buffer, file_size, 0);
 
 		ClientSocket.Send(&bytes_received, sizeof(int), 0);
 
 		//Server resends until Client can receive data chunk
 		while (bytes_received == -1 || bytes_received == 0) {
-			ClientSocket.Receive((char*)&buffer_size, sizeof(int), 0);
-			bytes_received = ClientSocket.Receive(rest_buffer, buffer_size, 0);
+			bytes_received = ClientSocket.Receive(rest_buffer, file_size, 0);
 
 			ClientSocket.Send(&bytes_received, sizeof(int), 0);
 		}
@@ -241,7 +202,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 	ClientSocket.Create();
 	int try_time = 0;
-	while (ClientSocket.Connect(_T("127.0.0.1"), 1234) == 0)
+	while (ClientSocket.Connect(_T("192.168.1.11"), 1234) == 0)
 	{
 		cout << "Server connection fucked\n";
 		cout << "Press Any key to try again\n";
@@ -290,6 +251,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 			break;
 		}
 	}
+
 	ClientSocket.Close();
 
 	return nRetCode;
