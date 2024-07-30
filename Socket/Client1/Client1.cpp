@@ -1,14 +1,6 @@
 #include "stdafx.h"
 #include "Client1.h"
 #include <afxsock.h>
-#include <cstdlib>
-#include <csignal>
-#include <conio.h>
-#include <fstream>
-#include <vector>
-#include <queue>
-#include <string>
-#include <iomanip>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -22,12 +14,9 @@ CSocket ClientSocket;
 
 void signalHandler(int signum)
 {
-	const char* termination_message = "1111 - Disconnect from Server";
-	int message_size = static_cast<int>(strlen(termination_message));
-
 	if (ClientSocket.m_hSocket != INVALID_SOCKET) {
-		ClientSocket.Send(&message_size, sizeof(message_size), 0);
-		ClientSocket.Send(termination_message, message_size, 0);
+		int termination_code = -3;
+		ClientSocket.Send(&termination_code, sizeof(int), 0);
 		ClientSocket.Close();
 	}
 
@@ -37,25 +26,32 @@ void signalHandler(int signum)
 	exit(signum);
 }
 
-void displayDownloadProgress(int progress, int total, string file_name)
+void displayDownloadProgress(float progress, float total, string file_name)
 {
-	float percentage = progress / (1.0 * total);
+	float percentage = progress / total;
 
 	cout << "\rDownloading: " << "\"" << file_name << "\"" << ": [";
-	cout << "                              ";
-	cout << percentage * 100 << setprecision(3) << "%";
-	for (float i = 0; i < percentage; i += 0.1) {
-		cout << "\xDB\xDB";
+
+	if (percentage >= 1) {
+		for (int i = 0; i < 10; i++) {
+			cout << "\xDB\xDB";
+		}
+		cout << "] 100%";
+		return;
 	}
 
-	if (percentage == 1) cout << "]";
+	int progress_bar = percentage * 10;
+	for (int i = 0; i < progress_bar; i++) {
+		cout << "\xDB\xDB";
+	}
+	for (int i = progress_bar; i < 10; i++) {
+		cout << "  ";
+	}
+	cout << "] " << percentage * 100 << setprecision(3) << "%          ";
 }
 
 void registerAvailibleFile()
 {
-	ofstream output("request.txt");
-	if (!output.good()) return;
-
 	int message_size = 0;
 	char* message;
 
@@ -64,10 +60,9 @@ void registerAvailibleFile()
 	ClientSocket.Receive(message, message_size, 0);
 
 	message[message_size] = '\0';
-	output << message;
+	cout << "           <<< Available files >>>\n";
 
 	cout << message << "\n";
-	output.close();
 }
 
 void registerRequestingFiles(queue<string>& requesting_files)
@@ -77,7 +72,7 @@ void registerRequestingFiles(queue<string>& requesting_files)
 
 	if (!file.good())
 	{
-		cout << "Unable to read input!\n";
+		cout << "           <<< Unable to open Input File! >>>\n";
 		exit(1);
 	}
 
@@ -116,7 +111,7 @@ bool receiveDownloadData(string file_name)
 		ClientSocket.Send(&bytes_received, sizeof(int), 0);
 
 		//Server resends until Client can receive data chunk
-		while (bytes_received == -1 || bytes_received == 0) {
+		while (bytes_received == -1) {
 			bytes_received = ClientSocket.Receive(buffer, chunk, 0);
 			ClientSocket.Send(&bytes_received, sizeof(int), 0);
 		}
@@ -131,7 +126,7 @@ bool receiveDownloadData(string file_name)
 			ClientSocket.Send(&bytes_received, sizeof(int), 0);
 
 			//Server resends until Client can receive data chunk
-			while (bytes_received == -1 || bytes_received == 0) {
+			while (bytes_received == -1) {
 				bytes_received = ClientSocket.Receive(buffer, chunk, 0);
 				ClientSocket.Send(&bytes_received, sizeof(int), 0);
 			}
@@ -155,7 +150,7 @@ bool receiveDownloadData(string file_name)
 		ClientSocket.Send(&bytes_received, sizeof(int), 0);
 
 		//Server resends until Client can receive data chunk
-		while (bytes_received == -1 || bytes_received == 0) {
+		while (bytes_received == -1) {
 			bytes_received = ClientSocket.Receive(rest_buffer, file_size, 0);
 
 			ClientSocket.Send(&bytes_received, sizeof(int), 0);
@@ -167,6 +162,7 @@ bool receiveDownloadData(string file_name)
 		delete[] rest_buffer;
 	}
 
+	displayDownloadProgress(part, total, file_name);
 	ofs.close();
 	return true;
 }
@@ -191,12 +187,12 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 	if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0))
 	{
-		_tprintf(_T("Fatal Error: MFC initialization failed\n"));
+		_tprintf(_T("<<< Fatal Error: MFC initialization failed >>>\n"));
 		nRetCode = 1;
 		return nRetCode;
 	}
 	if (AfxSocketInit() == FALSE) {
-		cout << "Socket Library initialization failed\n";
+		cout << "<<< Fatal Error: Socket Library initialization failed >>>\n";
 		return FALSE;
 	}
 
@@ -204,17 +200,15 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	int try_time = 0;
 	while (ClientSocket.Connect(_T("192.168.1.11"), 1234) != 0)
 	{
-		cout << "Server connection fucked\n";
-		cout << "Press Any key to try again\n";
-		char ass = _getch();
+		cout << "\r<<< Server connection failed... Trying again...>>>\n";
 		Sleep(500);
 		try_time++;
 		if (try_time >= 3) {
-			cout << "Server connection absolutely fucked\n";
+			cout << "<<< Server connection failed >>>\n";
 			return nRetCode;
 		}
 	}
-	cout << "Server connection succeeded\n";
+	cout << "<<< Server connection succeeded >>>\n\n\n";
 
 	registerAvailibleFile();
 
@@ -239,7 +233,6 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 			if (receiveDownloadData(requesting_files.front())) {
 				downloaded.push_back(requesting_files.front());
-				cout << "Downloading " << requesting_files.front() << " 100%\n";
 			}
 			requesting_files.pop();
 
@@ -247,12 +240,13 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 		}
 
 		if (response == 0) {
-			cout << "Client has download all files so fuck off\n";
+			cout << "           <<< All available files downloaded. Disconnecting... >>>\n\n\n";
 			break;
 		}
 	}
 
 	ClientSocket.Close();
+	cout << "           <<< Disconnected! >>>\n";
 
 	return nRetCode;
 }
