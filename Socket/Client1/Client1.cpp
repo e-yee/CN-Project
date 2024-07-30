@@ -202,7 +202,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 	ClientSocket.Create();
 	int try_time = 0;
-	while (ClientSocket.Connect(_T("192.168.1.11"), 1234) == 0)
+	while (ClientSocket.Connect(_T("192.168.1.11"), 1234) != 0)
 	{
 		cout << "Server connection fucked\n";
 		cout << "Press Any key to try again\n";

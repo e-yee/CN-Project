@@ -39,7 +39,16 @@ void sendFileList(vector<File>& file_list, CSocket& connector) {
 	connector.Send(list.c_str(), list_size, 0);
 }
 
-void uploadFile(string file_name, CSocket& connector) {
+bool checkConnection(int error_code) {
+	if (error_code == -3 || error_code == 0) {
+		cout << "Client disconnected from Server\n";
+		return false;
+	}
+
+	return true;
+}
+
+void uploadFile(string file_name, CSocket& connector, int& connection) {
 	ifstream ifs(file_name.c_str(), ios::binary);
 	if (!ifs.is_open()) {
 		cout << "Open file failed!\n";
@@ -64,15 +73,27 @@ void uploadFile(string file_name, CSocket& connector) {
 		bytes_sent = chunk_size;
 		connector.Send(chunk, bytes_sent, 0);
 		connector.Receive((char*)&bytes_received, sizeof(int), 0);
+		
+		if (!checkConnection(bytes_received)) {
+			connection = 0;
+			ifs.close();
+			return;
+		}
 
 		//Resend if Client cannot receive data chunk
-		while (bytes_received == -1 || bytes_received == 0)
+		while (bytes_received == -1)
 			connector.Receive((char*)&bytes_received, sizeof(int), 0);
 
 		//Send the rest until Client receives full data chunk
 		while (bytes_received < bytes_sent) {
 			bytes_sent -= bytes_received;
 			connector.Receive((char*)&bytes_received, sizeof(int), 0);
+
+			if (!checkConnection(bytes_received)) {
+				connection = 0;
+				ifs.close();
+				return;
+			}
 
 			//Resend if Client cannot receive data chunk
 			while (bytes_received == -1 || bytes_received == 0)
@@ -94,8 +115,15 @@ void uploadFile(string file_name, CSocket& connector) {
 		connector.Send(rest_chunk, bytes_sent, 0);
 		connector.Receive((char*)&bytes_received, sizeof(int), 0);
 
+		if (!checkConnection(bytes_received)) {
+			connection = 0;
+			delete[] rest_chunk;
+			ifs.close();
+			return;
+		}
+
 		//Resend if Client cannot receive data chunk
-		while (bytes_received == -1 || bytes_received == 0)
+		while (bytes_received == -1) 
 			connector.Receive((char*)&bytes_received, sizeof(int), 0);
 
 		real_size -= bytes_received;
@@ -108,25 +136,26 @@ void uploadFile(string file_name, CSocket& connector) {
 void uploadProcess(vector<File>& file_list, CSocket& connector) {
 	int response = -1;
 	int message_size = 0;
+	int connection = 1;
 	char* message;
 
 	do {
 		connector.Receive((char*)&message_size, sizeof(int), 0);
+
+		if (!checkConnection(message_size)) return;
+
 		message = new char[message_size + 1];
 		connector.Receive(message, message_size, 0);
 		message[message_size] = '\0';
-
-		if (strcmp(message, "1111 - Disconnect from Server") == 0) {
-			cout << "Client disconnected from Server!\n";
-			break;
-		}
 
 		response = -1;
 		for (int i = 0; i < file_list.size(); ++i)
 			if (strcmp(file_list[i].name.c_str(), message) == 0) {
 				response = 1;
 
-				uploadFile(file_list[i].name, connector);
+				uploadFile(file_list[i].name, connector, connection);
+				if (connection == 0) return;
+
 				file_list.erase(file_list.begin() + i);
 				break;
 			}
