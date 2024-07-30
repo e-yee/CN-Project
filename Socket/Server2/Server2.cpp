@@ -95,9 +95,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 		DWORD thread_ID;
 		HANDLE thread_status;
 		
+		cout << "Waiting connection from Client\n";
 		while (1) {
-			cout << "Waiting connection from Client\n";
-
 			if (server_socket.Accept(connector)) {
 				cout << "Client connected to Server\n";
 
@@ -105,7 +104,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 				*h_connected = connector.Detach();
 
-				thread_status = CreateThread(NULL, 0, function_cal, h_connected, 0, &thread_ID);
+				thread_status = CreateThread(NULL, 0, functionCal, h_connected, 0, &thread_ID);
 			}
 		}
 		server_socket.Close();
