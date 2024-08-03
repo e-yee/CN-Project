@@ -5,11 +5,14 @@
 using namespace std;
 
 struct File {
-	string name, size;
+	string name, size, priority;
+};
+
+struct Chunk {
+	string file_name, IP_address, position, content;
 };
 
 vector<File> getFileList(string file_name);
 void sendFileList(vector<File>& file_list, CSocket& connector);
-bool checkConnection(int error_code);
-void uploadFile(string file_name, CSocket& connector, int& connection);
+void uploadFile(string file_name, CSocket& connector);
 void uploadProcess(vector<File>& file_list, CSocket& connector);

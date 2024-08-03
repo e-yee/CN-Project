@@ -13,8 +13,7 @@ CSocket server_socket;
 
 using namespace std;
 
-void signalHandler(int signum)
-{
+void signalHandler(int signum) {
 	const char* termination_message = "404 - Server disconnection";
 	int message_size = static_cast<int>(strlen(termination_message));
 
