@@ -12,6 +12,14 @@ using namespace std;
 
 CSocket ClientSocket;
 
+struct DataChunk 
+{
+	string file_name; 
+	string position;
+	string chunk_size;
+	string content;
+};
+
 void signalHandler(int signum)
 {
 	if (ClientSocket.m_hSocket != INVALID_SOCKET) {
@@ -152,7 +160,6 @@ bool receiveDownloadData(string file_name)
 		//Server resends until Client can receive data chunk
 		while (bytes_received == -1) {
 			bytes_received = ClientSocket.Receive(rest_buffer, file_size, 0);
-
 			ClientSocket.Send(&bytes_received, sizeof(int), 0);
 		}
 
