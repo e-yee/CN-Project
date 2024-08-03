@@ -162,7 +162,7 @@ bool receiveDownloadData(string file_name)
 		delete[] rest_buffer;
 	}
 
-	displayDownloadProgress(part, total, file_name);
+	displayDownloadProgress(1, 1, file_name);
 	ofs.close();
 	return true;
 }
