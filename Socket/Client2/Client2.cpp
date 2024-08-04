@@ -14,6 +14,7 @@ CWinApp theApp;
 using namespace std;
 using std::cout;
 
+
 struct File
 {
 	string name;
@@ -106,14 +107,16 @@ void registerRequestingFiles(queue<File>& requesting_files)
 	file.close();
 }
 
+
+
 bool receiveDownloadData(string file_name)
 {
 	string path = "C:\\Users\\PC\\Desktop\\" + file_name;
 	ofstream ofs(path.c_str(), ios::binary);
 
-	int max_chunk_size = 10240;//
+	/*int max_chunk_size = 10240;//
 
-	int file_size = 0;
+		int file_size = 0;
 	ClientSocket.Receive((char*)&file_size, sizeof(int), 0);
 	int total = file_size;
 	int part = 0;
@@ -183,21 +186,26 @@ bool receiveDownloadData(string file_name)
 
 	displayDownloadProgress(1, 1, file_name);
 	ofs.close();
-	return true;
+	return true; */
 }
 
 void sendRequestingFile(queue<File> requesting_files)
 {
 	if (requesting_files.empty()) return;
 
-	while (!requesting_files.empty()) {
-		string message = requesting_files.front().name + " " + requesting_files.front().priority;
-		int message_size = message.size();
+	string back = requesting_files.back().name;
+	string message;
+	int message_size;
 
-		ClientSocket.Send(&message_size, sizeof(int), 0);
-		ClientSocket.Send(message.c_str(), message_size, 0);
-		requesting_files.pop();
+	while (!requesting_files.empty()) {
+		message = requesting_files.front().name + " " + requesting_files.front().priority;
+		if (back != requesting_files.front().name) message += "\n";
 	}
+	message_size = message.size();
+
+	ClientSocket.Send(&message_size, sizeof(int));
+	ClientSocket.Send(message.c_str(), message_size);
+	requesting_files.pop();
 }
 
 DWORD WINAPI checkInputFile(LPVOID arg)
