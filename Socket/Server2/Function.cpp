@@ -1,85 +1,139 @@
 #include "Function.h"
 
-vector<File> getFileList(string file_name) {
-	vector<File> v;
-
-	ifstream ifs(file_name.c_str());
-	if (!ifs.is_open()) {
-		cout << "Open file failed!\n";
-		return v;
-	}
-
-	File f;
-	while (!ifs.eof()) {
-		getline(ifs, f.name, ' ');
-		getline(ifs, f.size);
-
-		v.push_back(f);
-	}
-
-	ifs.close();
-
-	return v;
-}
-
-void sendFileList(vector<File>& file_list, CSocket& connector) {
-	string file_name = "Resource Files\\download.txt";
-	file_list = getFileList(file_name);
-
-	string list = file_list[0].name + " " + file_list[0].size + "\n";
-	for (int i = 1; i < file_list.size(); i++) {
-		if (i < file_list.size() - 1)
-			list += file_list[i].name + " " + file_list[i].size + "\n";
-		else
-			list += file_list[i].name + " " + file_list[i].size;
-	}
-	int list_size = list.size();
-
-	connector.Send(&list_size, sizeof(int), 0);
-	connector.Send(list.c_str(), list_size, 0);
-}
-
-bool checkDisconnection(int bytes_received, string IP_address) {
+bool checkDisconnection(int bytes_received) {
 	if (bytes_received == 0) {
-		cout << "Client " << IP_address << " disconnected from Server!\n";
-
+		cout << "Client disconnected from Server!\n";
 		return true;
 	}
 	return false;
 }
 
-vector<File> getRequestingList(string message) {
-	stringstream ss(message);
-	File f;
-	vector<File> result;
-
-	while (ss.good()) {
-		getline(ss, f.name, ' ');
-		getline(ss, f.priority);
-
-		result.push_back(f);
+void getFileList(vector<File>& file_list) {
+	string file_name = "download.txt";
+	ifstream ifs(file_name.c_str());
+	if (!ifs.good()) {
+		cout << "Open file failed!\n";
+		return;
 	}
 
-	return result;
+	File f;
+	while (!ifs.eof()) {
+		ifs >> f.name >> f.size;
+		
+		file_list.push_back(f);
+	}
+
+	ifs.close();
 }
 
-void uploadFile(File f, string IP_address) {
+void sendFileList(vector<File> file_list, CSocket& connector) {
+	string message = "";
+	for (int i = 0; i < file_list.size(); ++i) {
+		if (i != file_list.size() - 1)
+			message += file_list[i].name + " " + file_list[i].size + "\n";
+		else
+			message += file_list[i].name + " " + file_list[i].size;
+	}
+	int message_size = message.size();
 
+	connector.Send(&message_size, sizeof(message_size));
+	connector.Send(message.c_str(), message_size);
 }
-void uploadProcess(vector<File>& file_list, CSocket& connector, string IP_address) {
-	int response;
-	int message_size;
-	int bytes_received;
-	char* message;
 
-	do {
-		bytes_received = connector.Receive(&message_size, sizeof(int), 0);
-		if (checkDisconnection(bytes_received, IP_address)) break;
+void getRequestingList(queue<File>& requesting_list, string message) {
+	stringstream ss(message);
+	File f;
+	while (ss.good()) {
+		ss >> f.name >> f.priority;
 
-		message = new char[message_size + 1];
-		connector.Receive(message, message_size, 0);
-		message[message_size] = '\0';
+		requesting_list.push(f);
+	}
+}
 
-		vector<File> requesting_list = getRequestingList(message);
-	} while (1);
+void getChunkQueue(queue<DataChunk>& chunk_queue, File requesting_file, int& file_size) {
+	ifstream ifs(requesting_file.name.c_str(), ios::binary);
+	if (!ifs.good()) {
+		cout << "Open file failed!\n";
+		return;
+	}
+
+	DataChunk chunk;
+	chunk.file_name = requesting_file.name;
+
+	int max_chunk_size = 0;
+	if (requesting_file.priority == "NORMAL") max_chunk_size = 6400;
+	else if (requesting_file.priority == "HIGH") max_chunk_size = 6400 * 4;
+	else max_chunk_size = 6400 * 10;
+
+	ifs.seekg(0, ios::end);
+	file_size = ifs.tellg();
+	ifs.seekg(0, ios::beg);
+
+	int number_of_chunks = file_size / max_chunk_size;
+	int rest_data = file_size % max_chunk_size;
+	char* buffer;
+	if (number_of_chunks == 0) {
+		buffer = new char[rest_data];
+
+		ifs.read(buffer, rest_data);
+
+		chunk.position = "end";
+		chunk.size = to_string(rest_data);
+		chunk.content = buffer;
+
+		chunk_queue.push(chunk);
+	}
+	else {
+		buffer = new char[max_chunk_size];
+
+		for (int i = 0; i < number_of_chunks; ++i) {
+			ifs.read(buffer, max_chunk_size);
+
+			if (i == 0) 
+				chunk.position = "start";
+			else if (i == number_of_chunks - 1) 
+				chunk.position = "end";
+			else 
+				chunk.position = "middle";
+			chunk.size = to_string(max_chunk_size);
+			chunk.content = buffer;
+
+			chunk_queue.push(chunk);
+		}
+
+		if (rest_data != 0) {
+			chunk_queue.back().position = "middle";
+
+			ifs.read(buffer, rest_data);
+
+			chunk.position = "end";
+			chunk.size = to_string(rest_data);
+			chunk.content = buffer;
+
+			chunk_queue.push(chunk);
+		}
+	}
+}
+
+void sendData(queue<queue<DataChunk>>& buffer_queue, CSocket& connector, int& response) {
+	DataChunk data;
+	queue<DataChunk> chunk_queue;
+	int bytes_received = 0;
+	while (!buffer_queue.empty()) {
+		chunk_queue = buffer_queue.front();
+		buffer_queue.pop();
+
+		data = chunk_queue.front();
+		chunk_queue.pop();
+
+		connector.Send((char*)&data, sizeof(data));
+		connector.Receive((char*)&bytes_received, sizeof(int));
+
+		if (checkDisconnection(bytes_received)) {
+			response = 0;
+			return;
+		}
+
+		if (!chunk_queue.empty()) buffer_queue.push(chunk_queue);
+	}
 }
