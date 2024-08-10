@@ -12,7 +12,7 @@ using namespace std;
 
 CSocket sClient;
 vector<File> thread_requesting_list;
-string input = "D:\\HCMUS\\1stYear\\3rdSemester\\ComputerNetworking\\Lab\\Socket\\Client2\\input.txt";
+string input = "input.txt";
 int difference = 0;
 int start = 0;
 
@@ -67,7 +67,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	}
 
 	sClient.Create();
-	if (sClient.Connect(_T("127.0.0.1"), 1234) == 0) {
+	if (sClient.Connect(_T("192.168.1.10"), 1234) == 0) {
 		cout << "\r<<< Server connection failed... Trying again...>>>\n";
 		return nRetCode;
 	}
@@ -116,7 +116,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 			//Handle chunk position
 			if (head.position == "start") {
-				string path = "D:\\output\\" + head.filename;
+				string path = "C:\\Users\\PC\\Desktop\\" + head.filename;
 				ofstream ofs(path.c_str(), ios::app | ios::binary);
 				ofs_list.push_back(move(ofs));
 			}
@@ -158,7 +158,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 				receiveListOfFileSize(list_of_size, sClient);
 			}
 
-			cout << 1.0 * progress[file_position] / list_of_size[file_position] * 100 << "\n";
+			//cout << 1.0 * progress[file_position] / list_of_size[file_position] * 100 << "\n";
+			displayProgress(progress, list_of_size, thread_requesting_list);
 		}
 
 		if (finish == 0) break;
