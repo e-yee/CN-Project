@@ -17,7 +17,7 @@ struct Header {
 
 DWORD WINAPI updateRequestingList(LPVOID arg);
 void signalHandler(int signum);
-void displayProgress(const vector<int> current_progress, const vector<int> total_progress, const vector<File> files);
+void displayProgress(const vector<int> current_progress, const vector<int> total_progress, const vector<File> files, int downloadable_files);
 void receiveDownloadableFiles(CSocket& sClient);
 void getRequestingFiles(vector<File>& requesting_list, string filename);
 void sendRequestingFiles(vector<File> requesting_list, CSocket& sClient, int start);

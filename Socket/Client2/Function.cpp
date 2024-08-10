@@ -112,18 +112,18 @@ void receiveChunk(ofstream& ofs, CSocket& sClient, int chunk_size, int& bytes) {
 	delete[] buffer;
 }
 
-void displayProgress(const vector<int> current_progress, const vector<int> total_progress, const vector<File> files) {
+void displayProgress(const vector<int> current_progress, const vector<int> total_progress, const vector<File> files, int downloadable_files) {
 	for (int i = 0; i < current_progress.size(); i++) {
 		float percentage = 1.0 * current_progress[i] / total_progress[i];
 
-		cout << "\x1b[" << i + 10 << ";0H";
+		cout << "\x1b[" << i + downloadable_files << ";0H";
 		cout << "Downloading: " << files[i].name << ": [";
 
 		if (percentage >= 1) {
 			for (int i = 0; i < 10; i++) {
 				cout << "\xDB\xDB";
 			}
-			cout << "] 100%   ";
+			cout << "] 100%                       ";
 			continue;
 		}
 
