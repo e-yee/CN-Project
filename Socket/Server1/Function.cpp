@@ -96,7 +96,7 @@ void uploadFile(string file_name, CSocket& connector, int& connection) {
 			}
 
 			//Resend if Client cannot receive data chunk
-			while (bytes_received == -1 || bytes_received == 0)
+			while (bytes_received == -1)
 				connector.Receive((char*)&bytes_received, sizeof(int), 0);
 		}
 		real_size -= chunk_size;
@@ -163,11 +163,11 @@ void uploadProcess(vector<File>& file_list, CSocket& connector) {
 		if (file_list.empty()) {
 			response = 0;
 
-			connector.Send((char*)&response, sizeof(int), 0);
+			connector.Send(&response, sizeof(int), 0);
 			cout << "Client has downloaded all files\n";
 			break;
 		}
 
-		connector.Send((char*)&response, sizeof(int), 0);
+		connector.Send(&response, sizeof(int), 0);
 	} while (1);
 }

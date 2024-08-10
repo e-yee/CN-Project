@@ -42,4 +42,7 @@
       <Filter>Resource Files</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="download.txt" />
+  </ItemGroup>
 </Project>

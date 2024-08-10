@@ -8,113 +8,121 @@
 
 CWinApp theApp;
 
-CSocket server_socket;
-CSocket connector;
-vector<File> file_list;
-queue<File> thread_requesting_list;
-int difference = -1;
-
 using namespace std;
 using std::cout;
 
-void signalHandler(int signum) {
-	int termination_message = 404;
+CSocket sServer;
 
-	if (server_socket.m_hSocket != INVALID_SOCKET) {
-		server_socket.Send(&termination_message, sizeof(int), 0);
-		server_socket.Close();
+DWORD WINAPI uploadProcess(LPVOID arg) {
+	SOCKET* h_connected = (SOCKET*) arg;
+	CSocket sConnector;
+	sConnector.Attach(*h_connected);
+
+	string filename = "download.txt";
+	vector<File> downloadable_list;
+	
+	//Send downloadable files to Client
+	getDownloadableFiles(downloadable_list, filename);
+	sendDownloadableFiles(downloadable_list, sConnector);
+
+	int start = 0;
+	bool connection = true;
+	vector<File> requesting_list;
+	vector<queue<Header>> file_headers_list;
+
+	//Receive requesting files from Client
+	receiveRequestingFiles(requesting_list, sConnector, start, connection);
+	getFileHeadersList(file_headers_list, requesting_list, downloadable_list);
+	
+	//Check connection
+	if (!connection) {
+		delete h_connected;
+		return 0;
 	}
-	exit(signum);
-}
 
-DWORD WINAPI updateRequestingList(LPVOID arg) {
-	SOCKET* h_connected = (SOCKET*)arg;
-	CSocket my_sock;
-	my_sock.Attach(*h_connected);
+	vector<int> list_of_size;
 
-	difference = 0;
+	//Send list of file size to Client
+	getListOfFileSize(list_of_size, requesting_list, start);
+	sendListOfFileSize(list_of_size, sConnector, start);
 
-	int message_size = 0;
-	char* message;
+	int number_of_chunks = 0;
+	int chunk_count = 0;
+	int difference = 0;
+	int finish = requesting_list.size();
+	Header head;
+	vector<ifstream> ifs_list;
 
+	//Send data to Client
 	do {
-		connector.Receive((char*)&message_size, sizeof(int));
+		for (int i = 0; i < requesting_list.size(); ++i) {
+			if (file_headers_list[i].empty()) continue;
 
-		if (checkDisconnection(message_size)) break;
+			getNumberOfChunks(requesting_list[i].priority, number_of_chunks, file_headers_list[i].size());
+			sConnector.Send(&number_of_chunks, sizeof(int), 0);
 
-		message = new char[message_size + 1];
-		connector.Receive(message, message_size);
-		message[message_size] = '\0';
+			while (number_of_chunks != 0) {
+				head = file_headers_list[i].front();
+				file_headers_list[i].pop();
+				sendHeader(head, sConnector);
 
-		queue<File> requesting_list;
-		getRequestingList(requesting_list, message);
+				//Handle chunk position
+				if (head.position == "start") {
+					ifstream ifs(head.filename.c_str(), ios::binary);
+					ifs_list.push_back(move(ifs));
+				}
+				else if (head.position == "end") {
+					--finish;
+					++chunk_count;
+					--number_of_chunks;
+					ifs_list[i].close();
 
-		if (!thread_requesting_list.empty()) {
-			difference = 1;
-			
-			thread_requesting_list = requesting_list;
-		}
-		else {
-			if (requesting_list.back().name != thread_requesting_list.back().name) {
-				difference = 1;
-				
-				while (requesting_list.front().name != thread_requesting_list.front().name)
-					requesting_list.pop();
+					continue;
+				}
 
-				while (!thread_requesting_list.empty()) {
-					thread_requesting_list.pop();
-					requesting_list.pop();
-				}	
+				sendChunk(head, ifs_list[i], sConnector, connection);
 
-				thread_requesting_list = requesting_list;
+				//Check connection
+				if (!connection) {
+					delete h_connected;
+					return 0;
+				}
+
+				++chunk_count;
+				--number_of_chunks;
+
+				//Receive difference after every two chunks sent
+				sConnector.Receive((char*)&difference, sizeof(int), 0);
+
+				//Update requesting list
+				if (difference == 1) {
+					receiveRequestingFiles(requesting_list, sConnector, start, connection);
+					getFileHeadersList(file_headers_list, requesting_list, downloadable_list);
+
+					//Check connection
+					if (!connection) {
+						delete h_connected;
+						return 0;
+					}
+
+					finish += requesting_list.size() - start;
+
+					getListOfFileSize(list_of_size, requesting_list, start);
+					sendListOfFileSize(list_of_size, sConnector, start);
+				}
 			}
 		}
 
-		Sleep(2000);
+		if (finish == 0) break;
+
+		if (downloadable_list.empty()) break;
 	} while (1);
 
 	delete h_connected;
 	return 0;
 }
 
-DWORD WINAPI uploadProcess(LPVOID arg) {
-	SOCKET* k_connected = (SOCKET*)arg;
-	CSocket my_sock;
-	my_sock.Attach(*k_connected);
-
-	queue<File> requesting_list = thread_requesting_list;
-	queue<DataChunk> chunk_queue;
-	queue<queue<DataChunk>> buffer_queue;
-	queue<int> file_size_list;
-	int file_size = -1;
-
-	while (!requesting_list.empty()) {
-		for (int i = 0; i < file_list.size(); ++i)
-			if (requesting_list.front().name == file_list[i].name) {
-				getChunkQueue(chunk_queue, file_list[i], file_size);
-
-				buffer_queue.push(chunk_queue);
-				file_size_list.push(file_size);
-
-				requesting_list.pop();
-				file_list.erase(file_list.begin() + i);
-			}
-	}
-
-	int response = -1;
-	sendData(buffer_queue, connector, response);
-	if (response == 0) {
-		delete k_connected; 
-		return 0;
-	}
-
-	delete k_connected;
-	return 0;
-}
-
 int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
-	signal(SIGINT, signalHandler);
-
 	int n_ret_code = 0;
 
 	if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0)) {
@@ -123,50 +131,42 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	}
 	else {
 		if (AfxSocketInit() == FALSE) {
-			cout << "Socket Library intialization failed\n";
+			cout << "Socket Library initialization failed\n";
 			return FALSE;
 		}
 
-		if (server_socket.Create(1234, SOCK_STREAM, NULL) == 0) {
+		if (sServer.Create(1234, SOCK_STREAM, NULL) == 0) {
 			cout << "Server initialization failed\n";
-			cout << server_socket.GetLastError();
+			cout << sServer.GetLastError();
 			return FALSE;
 		}
 		else {
 			cout << "Server initialization succeeded\n";
 
-			if (server_socket.Listen(1) == FALSE) {
+			if (sServer.Listen(1) == FALSE) {
 				cout << "Server cannot listen on this port\n";
-				server_socket.Close();
+				sServer.Close();
 				return FALSE;
 			}
 		}
 
-		DWORD thread_ID1;
-		HANDLE thread_status1;
+		DWORD thread_ID;
+		HANDLE thread_status;
+		CSocket sConnector;
 
 		cout << "Waiting connection from Client\n";
 		while (1) {
-			if (server_socket.Accept(connector)) {
+			if (sServer.Accept(sConnector)) {
 				cout << "Client connected to Server\n";
 
-				getFileList(file_list);
-				sendFileList(file_list, connector);
-
 				SOCKET* h_connected = new SOCKET();
-				*h_connected = connector.Detach();
-				thread_status1 = CreateThread(NULL, 0, updateRequestingList, h_connected, 0, &thread_ID1);
 
-				if (difference == 1) {
-					DWORD thread_ID2;
-					HANDLE thread_status2;
-					SOCKET* k_connected = new SOCKET();
-					*k_connected = connector.Detach();
-					thread_status2 = CreateThread(NULL, 0, uploadProcess, k_connected, 0, &thread_ID2);
-				}
+				*h_connected = sConnector.Detach();
+
+				thread_status = CreateThread(NULL, 0, uploadProcess, h_connected, 0, &thread_ID);
 			}
 		}
-		server_socket.Close();
+		sServer.Close();
 	}
 
 	return n_ret_code;
