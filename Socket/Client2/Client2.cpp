@@ -14,7 +14,6 @@ CWinApp theApp;
 using namespace std;
 using std::cout;
 
-
 struct File
 {
 	string name;
@@ -31,6 +30,7 @@ struct DataChunk
 
 CSocket ClientSocket;
 queue<File> requesting_files;
+int chunk_count;
 
 void signalHandler(int signum)
 {
