@@ -19,6 +19,6 @@ void displayProgress(const vector<int> current_progress, const vector<int> total
 void receiveDownloadableFiles(CSocket& sClient);
 void getRequestingFiles(vector<File>& requesting_list, string filename);
 void sendRequestingFiles(vector<File> requesting_list, CSocket& sClient, int start);
-void receiveListOfFileSize(vector<int>& list_of_size, CSocket& sClient);
+void receiveListOfFileSize(vector<int>& file_size_list, CSocket& sClient);
 void receiveHeader(Header& head, CSocket& sClient);
 void receiveChunk(ofstream& ofs, CSocket& sClient, int chunk_size, int& bytes);

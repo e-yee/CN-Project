@@ -81,63 +81,71 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	}
 	sendRequestingFiles(thread_requesting_list, sClient, 0);
 
-	vector<int> progress;
+	vector<int> downloading_progress;
 	for (int i = 0; i < thread_requesting_list.size(); ++i)
-		progress.push_back(0);
+		downloading_progress.push_back(0);
 	
 	DWORD thread_ID;
 	HANDLE thread_status;
 	thread_status = CreateThread(NULL, 0, updateRequestingList, NULL, 0, &thread_ID);
 	
-	vector<int> list_of_size;
-	receiveListOfFileSize(list_of_size, sClient);
+	vector<int> file_size_list;
+	receiveListOfFileSize(file_size_list, sClient);
 
 	int number_of_chunks = 0;
-	Header head;
+	Header header;
 	int file_position = -1;
 	vector<ofstream> ofs_list;
-	int rest_data = 0;
+	int remaining_data = 0;
 	int bytes_received = 0;
 	int chunk_count = 0;
 	int chunk_size = 0;
-	int finish = thread_requesting_list.size();
+	int downloaded_files = thread_requesting_list.size();
 	do {
 		sClient.Receive((char*)&number_of_chunks, sizeof(int), 0);
 
 		while (number_of_chunks != 0) {
-			receiveHeader(head, sClient);
+			receiveHeader(header, sClient);
 
 			//Get file position
 			for (int i = 0; i < thread_requesting_list.size(); ++i) 
-				if (head.filename == thread_requesting_list[i].name) {
+				if (header.filename == thread_requesting_list[i].name) {
 					file_position = i;
 					break;
 				}
 
 			//Handle chunk position
-			if (head.position == "start") {
-				string path = "C:\\Users\\PC\\Desktop\\" + head.filename;
+			if (header.position == "start") {
+				string path = "C:\\Users\\PC\\Desktop\\" + header.filename;
 				ofstream ofs(path.c_str(), ios::app | ios::binary);
 				ofs_list.push_back(move(ofs));
 			}
-			else if (head.position == "end") {
-				--finish;
+			else if (header.position == "end") {
+				--downloaded_files;
 				++chunk_count;
 				--number_of_chunks;
 				ofs_list[file_position].close();
+
+				int response = 0;
+				sClient.Receive((char*)&response, sizeof(int), 0);
+
+				if (response == 2) {
+					cout << "Client has downloaded all files";
+					break;
+				}
 
 				continue;
 			}
 
 			//Determine chunk size
-			rest_data = list_of_size[file_position] - progress[file_position];
-			if (rest_data < 10240) chunk_size = rest_data;
+			remaining_data = file_size_list[file_position] - downloading_progress[file_position];
+			if (remaining_data < 10240) chunk_size = remaining_data;
 			else chunk_size = 10240;
 
-			//Receive data and update progress
+			//Receive data and update downloading_progress
 			bytes_received = 0;
 			receiveChunk(ofs_list[file_position], sClient, chunk_size, bytes_received);
-			progress[file_position] += bytes_received;
+			downloading_progress[file_position] += bytes_received;
 
 			++chunk_count;
 			--number_of_chunks;
@@ -151,18 +159,18 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 				sendRequestingFiles(thread_requesting_list, sClient, start);
 				for (int i = start; i < thread_requesting_list.size(); ++i)
-					progress.push_back(0);
+					downloading_progress.push_back(0);
 
-				finish += thread_requesting_list.size() - start;
+				downloaded_files += thread_requesting_list.size() - start;
 
-				receiveListOfFileSize(list_of_size, sClient);
+				receiveListOfFileSize(file_size_list, sClient);
 			}
 
-			//cout << 1.0 * progress[file_position] / list_of_size[file_position] * 100 << "\n";
-			displayProgress(progress, list_of_size, thread_requesting_list);
+			//cout << 1.0 * downloading_progress[file_position] / file_size_list[file_position] * 100 << "\n";
+			displayProgress(downloading_progress, file_size_list, thread_requesting_list);
 		}
 
-		if (finish == 0) break;
+		if (downloaded_files == 0) break;
 	} while (1);
 	
 	return nRetCode;

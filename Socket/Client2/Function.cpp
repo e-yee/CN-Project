@@ -59,7 +59,7 @@ void sendRequestingFiles(vector<File> requesting_list, CSocket& sClient, int sta
 	sClient.Send(message.c_str(), message_size, 0);
 }
 	
-void receiveListOfFileSize(vector<int>& list_of_size, CSocket& sClient) {
+void receiveListOfFileSize(vector<int>& file_size_list, CSocket& sClient) {
 	int number_of_files = 0;
 	sClient.Receive((char*)&number_of_files, sizeof(int), 0);
 
@@ -67,7 +67,7 @@ void receiveListOfFileSize(vector<int>& list_of_size, CSocket& sClient) {
 	for (int i = 0; i < number_of_files; ++i) {
 		sClient.Receive((char*)&file_size, sizeof(int), 0);
 
-		list_of_size.push_back(file_size);
+		file_size_list.push_back(file_size);
 	}
 }
 
