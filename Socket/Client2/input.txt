@@ -1,0 +1,2 @@
+AllForOne.zip CRITICAL
+ngu.txt NORMAL

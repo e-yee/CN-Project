@@ -35,7 +35,7 @@ DWORD WINAPI updateRequestingList(LPVOID arg) {
 			start = old_size;
 		}
 
-		_Thrd_sleep_for(2000);
+		Sleep(2000);
 	}
 
 	return 0;
@@ -67,7 +67,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	}
 
 	sClient.Create();
-	if (sClient.Connect(_T("127.0.0.1"), 1234) == 0) {
+	if (sClient.Connect(_T("192.168.1.10"), 1234) == 0) {
 		cout << "\r<<< Server connection failed >>>\n";
 		return n_ret_code;
 	}
@@ -126,10 +126,11 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 			//Handle chunk position
 			if (header.position == "start") {
-				string path = "D:\\output\\" + header.filename;
+				string path = "C:\\Users\\PC\\Desktop\\test download\\" + header.filename;
 				ofstream ofs(path.c_str(), ios::app | ios::binary);
 				ofs_list.push_back(move(ofs));
 			}
+
 			else if (header.position == "end") {
 				--downloaded_files;
 				++chunk_count;
@@ -179,7 +180,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 		if (downloaded_files == 0) {
 			cout << "You have 10 seconds to input more files\n";
-			_Thrd_sleep_for(10000);
+			Sleep(10000);
 
 			//Send difference after timeout
 			sClient.Send(&difference, sizeof(int), 0);
