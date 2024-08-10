@@ -35,7 +35,7 @@ DWORD WINAPI updateRequestingList(LPVOID arg) {
 			start = old_size;
 		}
 
-		_Thrd_sleep_for(2000);
+		Sleep(2000);
 	}
 
 	return 0;
@@ -178,8 +178,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 		}
 
 		if (downloaded_files == 0) {
-			cout << "You have 10 seconds to input more files\n";
-			_Thrd_sleep_for(10000);
+			Sleep(10000);
 
 			//Send difference after timeout
 			sClient.Send(&difference, sizeof(int), 0);

@@ -24,19 +24,19 @@ void getRequestingFiles(vector<File>& requesting_list, string filename) {
 		getline(ifs, f.name, ' ');
 		getline(ifs, f.priority);
 
-		if (requesting_list.empty()) {
-			if (f.name != "" && f.priority != "")
+		if (f.name != "" && f.priority != "") {
+			if (requesting_list.empty()) 
 				requesting_list.push_back(f);
-		}
-		else {
-			int existed = 0;
-			for (int i = 0; i < requesting_list.size(); ++i)
-				if (f.name == requesting_list[i].name) {
-					existed = 1;
-					break;
-				}
+			else {
+				bool existed = false;
+				for (int i = 0; i < requesting_list.size(); ++i)
+					if (f.name == requesting_list[i].name) {
+						existed = true;
+						break;
+					}
 
-			if (existed == 0) requesting_list.push_back(f);
+				if (!existed) requesting_list.push_back(f);
+			}
 		}
 	}
 
