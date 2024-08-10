@@ -15,7 +15,7 @@ struct Header {
 	string position;
 };
 
-void displayProgress(vector<int> current_progress, vector<int> total_progress, vector<File> files);
+void displayProgress(const vector<int> current_progress, const vector<int> total_progress, const vector<File> files);
 void receiveDownloadableFiles(CSocket& sClient);
 void getRequestingFiles(vector<File>& requesting_list, string filename);
 void sendRequestingFiles(vector<File> requesting_list, CSocket& sClient, int start);
