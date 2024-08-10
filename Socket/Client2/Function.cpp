@@ -1,12 +1,14 @@
 #include "Function.h"
 
-void receiveDownloadableFiles(CSocket& sClient) {
+void receiveDownloadableFiles(CSocket& sClient, int& downloadable_files) {
 	int message_size = -1;
 	sClient.Receive((char*)&message_size, sizeof(int), 0);
 
 	char* message = new char[message_size + 1];
 	sClient.Receive(message, message_size, 0);
 	message[message_size] = '\0';
+
+	sClient.Receive((char*)&downloadable_files, sizeof(int, 0));
 
 	cout << "List of downloadable files:\n";
 	cout << message << "\n";

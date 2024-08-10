@@ -73,7 +73,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	}
 	cout << "<<< Server connection succeeded >>>\n\n\n";
 
-	receiveDownloadableFiles(sClient);
+	int downloadable_files = 0;
+	receiveDownloadableFiles(sClient, downloadable_files);
 
 	//Send requesting files first time
 	while (1) {
@@ -113,7 +114,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 		while (number_of_chunks != 0) {
 
-			displayProgress(downloading_progress, file_size_list, thread_requesting_list);
+			displayProgress(downloading_progress, file_size_list, thread_requesting_list, downloadable_files);
 
 			receiveHeader(header, sClient);
 
@@ -130,7 +131,6 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 				ofstream ofs(path.c_str(), ios::app | ios::binary);
 				ofs_list.push_back(move(ofs));
 			}
-
 			else if (header.position == "end") {
 				--downloaded_files;
 				++chunk_count;
@@ -179,7 +179,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 		}
 
 		if (downloaded_files == 0) {
-			cout << "You have 10 seconds to input more files\n";
+			cout << "\nYou have 10 seconds to input more files\n";
 			Sleep(10000);
 
 			//Send difference after timeout
