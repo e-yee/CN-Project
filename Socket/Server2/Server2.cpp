@@ -25,6 +25,8 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 	getDownloadableFiles(downloadable_list, filename);
 	sendDownloadableFiles(downloadable_list, sConnector);
 
+	int downloadable_list_size = downloadable_list.size();
+
 	int start = 0;
 	bool connection = true;
 	vector<File> requesting_list;
@@ -49,7 +51,7 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 	int number_of_chunks = 0;
 	int chunk_count = 0;
 	int difference = 0;
-	int finish = requesting_list.size();
+	int downloaded_files = requesting_list.size();
 	Header head;
 	vector<ifstream> ifs_list;
 
@@ -72,10 +74,19 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 					ifs_list.push_back(move(ifs));
 				}
 				else if (head.position == "end") {
-					--finish;
+					--downloaded_files;
 					++chunk_count;
 					--number_of_chunks;
 					ifs_list[i].close();
+
+					int response = 1;
+					if (downloadable_list_size == downloaded_files) {
+						response = 2;
+						sConnector.Send(&response, sizeof(int), 0);
+						break;
+					}
+					
+					sConnector.Send(&response, sizeof(int), 0);
 
 					continue;
 				}
@@ -91,11 +102,13 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 				++chunk_count;
 				--number_of_chunks;
 
-				//Receive difference after every two chunks sent
+				//Receive difference after every chunk sent
 				sConnector.Receive((char*)&difference, sizeof(int), 0);
 
 				//Update requesting list
 				if (difference == 1) {
+
+					//Receive requesting files from Client
 					receiveRequestingFiles(requesting_list, sConnector, start, connection);
 					getFileHeadersList(file_headers_list, requesting_list, downloadable_list);
 
@@ -105,17 +118,16 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 						return 0;
 					}
 
-					finish += requesting_list.size() - start;
+					downloaded_files += requesting_list.size() - start;
 
+					//Send list of file size to Client
 					getListOfFileSize(list_of_size, requesting_list, start);
 					sendListOfFileSize(list_of_size, sConnector, start);
 				}
 			}
 		}
 
-		if (finish == 0) break;
-
-		if (downloadable_list.empty()) break;
+		if (downloaded_files == 0) break;
 	} while (1);
 
 	delete h_connected;
@@ -160,9 +172,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 				cout << "Client connected to Server\n";
 
 				SOCKET* h_connected = new SOCKET();
-
 				*h_connected = sConnector.Detach();
-
 				thread_status = CreateThread(NULL, 0, uploadProcess, h_connected, 0, &thread_ID);
 			}
 		}
