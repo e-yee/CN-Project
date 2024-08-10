@@ -6,6 +6,7 @@
 #define new DEBUG_NEW
 #endif
 
+#define MAX_CHUNK_SIZE 32768
 CWinApp theApp;
 
 using namespace std;
@@ -20,7 +21,6 @@ DWORD WINAPI updateRequestingList(LPVOID arg) {
 	vector<File> new_requesting_list;
 	int new_size = 0;
 	int old_size = 0;
-
 	while (1) {
 		getRequestingFiles(new_requesting_list, input);
 
@@ -35,7 +35,7 @@ DWORD WINAPI updateRequestingList(LPVOID arg) {
 			start = old_size;
 		}
 
-		Sleep(2000);
+		_Thrd_sleep_for(2000);
 	}
 
 	return 0;
@@ -54,12 +54,12 @@ void signalHandler(int signum) {
 int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	signal(SIGINT, signalHandler);
 
-	int nRetCode = 0;
+	int n_ret_code = 0;
 
 	if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0)) {
 		_tprintf(_T("<<< Fatal Error: MFC initialization failed >>>\n"));
-		nRetCode = 1;
-		return nRetCode;
+		n_ret_code = 1;
+		return n_ret_code;
 	}
 	if (AfxSocketInit() == FALSE) {
 		cout << "<<< Fatal Error: Socket Library initialization failed >>>\n";
@@ -67,14 +67,15 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	}
 
 	sClient.Create();
-	if (sClient.Connect(_T("192.168.1.10"), 1234) == 0) {
-		cout << "\r<<< Server connection failed... Trying again...>>>\n";
-		return nRetCode;
+	if (sClient.Connect(_T("127.0.0.1"), 1234) == 0) {
+		cout << "\r<<< Server connection failed >>>\n";
+		return n_ret_code;
 	}
 	cout << "<<< Server connection succeeded >>>\n\n\n";
 
 	receiveDownloadableFiles(sClient);
 
+	//Send requesting files first time
 	while (1) {
 		getRequestingFiles(thread_requesting_list, input);
 		if (!thread_requesting_list.empty()) break;
@@ -82,6 +83,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	sendRequestingFiles(thread_requesting_list, sClient, 0);
 
 	vector<int> downloading_progress;
+	
+	//Create vector of downloading progress
 	for (int i = 0; i < thread_requesting_list.size(); ++i)
 		downloading_progress.push_back(0);
 	
@@ -90,6 +93,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	thread_status = CreateThread(NULL, 0, updateRequestingList, NULL, 0, &thread_ID);
 	
 	vector<int> file_size_list;
+
+	//Receive list of file size
 	receiveListOfFileSize(file_size_list, sClient);
 
 	int number_of_chunks = 0;
@@ -101,12 +106,15 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 	int chunk_count = 0;
 	int chunk_size = 0;
 	int downloaded_files = thread_requesting_list.size();
+
+	//Receive data
 	do {
 		sClient.Receive((char*)&number_of_chunks, sizeof(int), 0);
 
 		while (number_of_chunks != 0) {
 
 			displayProgress(downloading_progress, file_size_list, thread_requesting_list);
+
 			receiveHeader(header, sClient);
 
 			//Get file position
@@ -118,7 +126,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 			//Handle chunk position
 			if (header.position == "start") {
-				string path = "C:\\Users\\PC\\Desktop\\" + header.filename;
+				string path = "D:\\output\\" + header.filename;
 				ofstream ofs(path.c_str(), ios::app | ios::binary);
 				ofs_list.push_back(move(ofs));
 			}
@@ -141,8 +149,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 			//Determine chunk size
 			remaining_data = file_size_list[file_position] - downloading_progress[file_position];
-			if (remaining_data < 10240) chunk_size = remaining_data;
-			else chunk_size = 10240;
+			if (remaining_data < MAX_CHUNK_SIZE) chunk_size = remaining_data;
+			else chunk_size = MAX_CHUNK_SIZE;
 
 			//Receive data and update downloading_progress
 			bytes_received = 0;
@@ -169,8 +177,29 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 			}
 		}
 
-		if (downloaded_files == 0) break;
+		if (downloaded_files == 0) {
+			cout << "You have 10 seconds to input more files\n";
+			_Thrd_sleep_for(10000);
+
+			//Send difference after timeout
+			sClient.Send(&difference, sizeof(int), 0);
+
+			if (difference == 1) {
+				difference = 0;
+
+				//Send requesting files to Server
+				sendRequestingFiles(thread_requesting_list, sClient, start);
+				for (int i = start; i < thread_requesting_list.size(); ++i)
+					downloading_progress.push_back(0);
+
+				downloaded_files += thread_requesting_list.size() - start;
+
+				//Receive list of file size
+				receiveListOfFileSize(file_size_list, sClient);
+			}
+			else break;
+		}
 	} while (1);
 	
-	return nRetCode;
+	return n_ret_code;
 }

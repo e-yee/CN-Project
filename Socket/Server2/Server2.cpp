@@ -24,14 +24,14 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 	//Send downloadable files to Client
 	getDownloadableFiles(downloadable_list, filename);
 	sendDownloadableFiles(downloadable_list, sConnector);
-
+	
 	int downloadable_list_size = downloadable_list.size();
 
 	int start = 0;
 	bool connection = true;
 	vector<File> requesting_list;
 	vector<queue<Header>> file_headers_list;
-
+	
 	//Receive requesting files from Client
 	receiveRequestingFiles(requesting_list, sConnector, start, connection);
 	getFileHeadersList(file_headers_list, requesting_list, downloadable_list);
@@ -42,19 +42,19 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 		return 0;
 	}
 
-	vector<int> list_of_size;
-
+	vector<int> file_size_list;
+	
 	//Send list of file size to Client
-	getListOfFileSize(list_of_size, requesting_list, start);
-	sendListOfFileSize(list_of_size, sConnector, start);
+	getListOfFileSize(file_size_list, requesting_list, start);
+	sendListOfFileSize(file_size_list, sConnector, start);
 
 	int number_of_chunks = 0;
 	int chunk_count = 0;
 	int difference = 0;
 	int downloaded_files = requesting_list.size();
-	Header head;
+	Header header;
 	vector<ifstream> ifs_list;
-
+	
 	//Send data to Client
 	do {
 		for (int i = 0; i < requesting_list.size(); ++i) {
@@ -64,23 +64,24 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 			sConnector.Send(&number_of_chunks, sizeof(int), 0);
 
 			while (number_of_chunks != 0) {
-				head = file_headers_list[i].front();
+				header = file_headers_list[i].front();
 				file_headers_list[i].pop();
-				sendHeader(head, sConnector);
+				sendHeader(header, sConnector);
 
 				//Handle chunk position
-				if (head.position == "start") {
-					ifstream ifs(head.filename.c_str(), ios::binary);
+				if (header.position == "start") {
+					ifstream ifs(header.filename.c_str(), ios::binary);
 					ifs_list.push_back(move(ifs));
 				}
-				else if (head.position == "end") {
+				else if (header.position == "end") {
 					--downloaded_files;
 					++chunk_count;
 					--number_of_chunks;
+					--downloadable_list_size;
 					ifs_list[i].close();
 
 					int response = 1;
-					if (downloadable_list_size == downloaded_files) {
+					if (downloadable_list_size == 0) {
 						response = 2;
 						sConnector.Send(&response, sizeof(int), 0);
 						break;
@@ -91,7 +92,7 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 					continue;
 				}
 
-				sendChunk(head, ifs_list[i], sConnector, connection);
+				sendChunk(header, ifs_list[i], sConnector, connection);
 
 				//Check connection
 				if (!connection) {
@@ -121,13 +122,38 @@ DWORD WINAPI uploadProcess(LPVOID arg) {
 					downloaded_files += requesting_list.size() - start;
 
 					//Send list of file size to Client
-					getListOfFileSize(list_of_size, requesting_list, start);
-					sendListOfFileSize(list_of_size, sConnector, start);
+					getListOfFileSize(file_size_list, requesting_list, start);
+					sendListOfFileSize(file_size_list, sConnector, start);
 				}
 			}
 		}
 
-		if (downloaded_files == 0) break;
+		if (downloaded_files == 0) {
+			_Thrd_sleep_for(10000);
+
+			//Receive difference after timeout
+			sConnector.Receive((char*)&difference, sizeof(int), 0);
+
+			if (difference == 1) {
+
+				//Receive requesting files from Client
+				receiveRequestingFiles(requesting_list, sConnector, start, connection);
+				getFileHeadersList(file_headers_list, requesting_list, downloadable_list);
+
+				//Check connection
+				if (!connection) {
+					delete h_connected;
+					return 0;
+				}
+
+				downloaded_files += requesting_list.size() - start;
+
+				//Send list of file size to Client
+				getListOfFileSize(file_size_list, requesting_list, start);
+				sendListOfFileSize(file_size_list, sConnector, start);
+			}
+			else break;
+		}
 	} while (1);
 
 	delete h_connected;

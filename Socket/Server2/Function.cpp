@@ -2,7 +2,7 @@
 
 bool checkDisconnection(int error_code) {
 	if (error_code == 0 || error_code == -3) {
-		cout << "Client disconnected from Server!\n";
+		cout << "Client disconnected from Server\n";
 		return true;
 	}
 	
@@ -65,7 +65,7 @@ void receiveRequestingFiles(vector<File>& requesting_list, CSocket& sConnector, 
 	}
 }
 
-void getListOfFileSize(vector<int>& list_of_size, vector<File> requesting_list, int start) {
+void getListOfFileSize(vector<int>& file_size_list, vector<File> requesting_list, int start) {
 	ifstream ifs;
 	int file_size = 0;
 	for (int i = start; i < requesting_list.size(); ++i) {
@@ -77,17 +77,17 @@ void getListOfFileSize(vector<int>& list_of_size, vector<File> requesting_list, 
 
 		ifs.close();
 
-		list_of_size.push_back(file_size);
+		file_size_list.push_back(file_size);
 	}
 }
 
-void sendListOfFileSize(vector<int> list_of_size, CSocket& sConnector, int start) {
-	int number_of_files = list_of_size.size() - start;
+void sendListOfFileSize(vector<int> file_size_list, CSocket& sConnector, int start) {
+	int number_of_files = file_size_list.size() - start;
 	sConnector.Send(&number_of_files, sizeof(int), 0);
 
 	int file_size = 0;
-	for (int i = start; i < list_of_size.size(); ++i) {
-		file_size = list_of_size[i];
+	for (int i = start; i < file_size_list.size(); ++i) {
+		file_size = file_size_list[i];
 
 		sConnector.Send(&file_size, sizeof(int), 0);
 	}
@@ -104,34 +104,33 @@ void getFileHeaders(queue<Header>& file_headers, string fname) {
 	int file_size = ifs.tellg();
 	ifs.seekg(0, ios::beg);
 
-	int max_chunk_size = 10240;
-	int number_of_chunks = file_size / max_chunk_size;
-	int rest_data = file_size % max_chunk_size;
-	Header head;
+	int number_of_chunks = file_size / MAX_CHUNK_SIZE;
+	int rest_data = file_size % MAX_CHUNK_SIZE;
+	Header header;
 
-	head.filename = fname;
+	header.filename = fname;
 	for (int i = 0; i < number_of_chunks; ++i) {
-		if (i == 0) head.position = "start";
-		else head.position = "middle";
-		head.chunk_size = max_chunk_size;
-		file_headers.push(head);
+		if (i == 0) header.position = "start";
+		else header.position = "middle";
+		header.chunk_size = MAX_CHUNK_SIZE;
+		file_headers.push(header);
 	}
 
 	if (rest_data != 0) {
 		if (file_headers.empty()) {
-			head.position = "start";
-			head.chunk_size = rest_data;
+			header.position = "start";
+			header.chunk_size = rest_data;
 		}
 		else {
-			head.position = "middle";
-			head.chunk_size = rest_data;
+			header.position = "middle";
+			header.chunk_size = rest_data;
 		}
-		file_headers.push(head);
+		file_headers.push(header);
 	}
 
-	head.position = "end";
-	head.chunk_size = 0;
-	file_headers.push(head);
+	header.position = "end";
+	header.chunk_size = 0;
+	file_headers.push(header);
 
 	ifs.close();
 }
@@ -148,21 +147,21 @@ void getFileHeadersList(vector<queue<Header>>& file_headers_list, vector<File> r
 			}
 }
 
-void sendHeader(Header head, CSocket& sConnector) {
-	int filename_length = head.filename.size();
+void sendHeader(Header header, CSocket& sConnector) {
+	int filename_length = header.filename.size();
 	sConnector.Send(&filename_length, sizeof(int), 0);
-	sConnector.Send(head.filename.c_str(), filename_length, 0);
+	sConnector.Send(header.filename.c_str(), filename_length, 0);
 
-	int position_length = head.position.size();
+	int position_length = header.position.size();
 	sConnector.Send(&position_length, sizeof(int), 0);
-	sConnector.Send(head.position.c_str(), position_length, 0);
+	sConnector.Send(header.position.c_str(), position_length, 0);
 }
 
-void sendChunk(Header head, ifstream& ifs, CSocket& sConnector, bool& connection) {
-	char* buffer = new char[head.chunk_size];
-	ifs.read(buffer, head.chunk_size);
+void sendChunk(Header header, ifstream& ifs, CSocket& sConnector, bool& connection) {
+	char* buffer = new char[header.chunk_size];
+	ifs.read(buffer, header.chunk_size);
 
-	int bytes_sent = head.chunk_size;
+	int bytes_sent = header.chunk_size;
 	sConnector.Send(buffer, bytes_sent, 0);
 
 	int bytes_received = 0;
