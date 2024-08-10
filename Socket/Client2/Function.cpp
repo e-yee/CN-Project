@@ -116,15 +116,15 @@ void displayProgress(const vector<int> current_progress, const vector<int> total
 	for (int i = 0; i < current_progress.size(); i++) {
 		float percentage = 1.0 * current_progress[i] / total_progress[i];
 
-		cout << "\x1b[0;" << i + 10 << "H";
+		cout << "\x1b[" << i + 10 << ";0H";
 		cout << "Downloading: " << files[i].name << ": [";
 
 		if (percentage >= 1) {
 			for (int i = 0; i < 10; i++) {
 				cout << "\xDB\xDB";
 			}
-			cout << "] 100%";
-			return;
+			cout << "] 100%   ";
+			continue;
 		}
 
 		int progress_bar = percentage * 10;

@@ -105,6 +105,8 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 		sClient.Receive((char*)&number_of_chunks, sizeof(int), 0);
 
 		while (number_of_chunks != 0) {
+
+			displayProgress(downloading_progress, file_size_list, thread_requesting_list);
 			receiveHeader(header, sClient);
 
 			//Get file position
@@ -165,9 +167,6 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 				receiveListOfFileSize(file_size_list, sClient);
 			}
-
-			//cout << 1.0 * downloading_progress[file_position] / file_size_list[file_position] * 100 << "\n";
-			displayProgress(downloading_progress, file_size_list, thread_requesting_list);
 		}
 
 		if (downloaded_files == 0) break;
