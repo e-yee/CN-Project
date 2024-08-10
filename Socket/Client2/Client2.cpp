@@ -10,174 +10,45 @@ CWinApp theApp;
 
 using namespace std;
 
-CSocket ClientSocket;
+CSocket sClient;
+vector<File> thread_requesting_list;
+string input = "D:\\HCMUS\\1stYear\\3rdSemester\\ComputerNetworking\\Lab\\Socket\\Client2\\input.txt";
+int difference = 0;
+int start = 0;
 
-void signalHandler(int signum)
-{
-	if (ClientSocket.m_hSocket != INVALID_SOCKET) {
-		int termination_code = -3;
-		ClientSocket.Send(&termination_code, sizeof(int), 0);
-		ClientSocket.Close();
+DWORD WINAPI updateRequestingList(LPVOID arg) {
+	vector<File> new_requesting_list;
+	int new_size = 0;
+	int old_size = 0;
+
+	while (1) {
+		getRequestingFiles(new_requesting_list, input);
+
+		if (thread_requesting_list.size() != new_requesting_list.size()) {
+			difference = 1;
+
+			new_size = new_requesting_list.size();
+			old_size = thread_requesting_list.size();
+			for (int i = old_size; i < new_size; ++i)
+				thread_requesting_list.push_back(new_requesting_list[i]);	
+			
+			start = old_size;
+		}
+
+		Sleep(2000);
 	}
 
-	ofstream file("input.txt");
-	file.close();
+	return 0;
+}
+
+void signalHandler(int signum) {
+	if (sClient.m_hSocket != INVALID_SOCKET) {
+		int termination_code = -3;
+		sClient.Send(&termination_code, sizeof(int), 0);
+		sClient.Close();
+	}
 
 	exit(signum);
-}
-
-void displayDownloadProgress(float progress, float total, string file_name)
-{
-	float percentage = progress / total;
-
-	cout << "\rDownloading: " << "\"" << file_name << "\"" << ": [";
-
-	if (percentage >= 1) {
-		for (int i = 0; i < 10; i++) {
-			cout << "\xDB\xDB";
-		}
-		cout << "] 100%";
-		return;
-	}
-
-	int progress_bar = percentage * 10;
-	for (int i = 0; i < progress_bar; i++) {
-		cout << "\xDB\xDB";
-	}
-	for (int i = progress_bar; i < 10; i++) {
-		cout << "  ";
-	}
-	cout << "] " << percentage * 100 << setprecision(3) << "%          ";
-}
-
-void registerAvailibleFile()
-{
-	int message_size = 0;
-	char* message;
-
-	ClientSocket.Receive((char*)(&message_size), sizeof(int), 0);
-	message = new char[message_size + 1];
-	ClientSocket.Receive(message, message_size, 0);
-
-	message[message_size] = '\0';
-	cout << "           <<< Available files >>>\n";
-
-	cout << message << "\n";
-}
-
-void registerRequestingFiles(queue<string>& requesting_files)
-{
-	string fuck = "input.txt";
-	ifstream file(fuck);
-
-	if (!file.good())
-	{
-		cout << "           <<< Unable to open Input File! >>>\n";
-		exit(1);
-	}
-
-	string file_name;
-	queue<string> temp = requesting_files;
-
-	while (getline(file, file_name))
-	{
-		requesting_files.push(file_name);
-	}
-
-	file.close();
-}
-
-bool receiveDownloadData(string file_name)
-{
-	string path = "C:\\Users\\PC\\Desktop\\" + file_name;
-	ofstream ofs(path.c_str(), ios::binary);
-
-	int max_chunk_size = 10240;//
-
-	int file_size = 0;
-	ClientSocket.Receive((char*)&file_size, sizeof(int), 0);
-	int total = file_size;
-	int part = 0;
-
-	int chunk = 10240;
-	int bytes_received = 0;
-	int buffer_size = 0;
-	char buffer[10240] = {};
-
-	while (file_size >= 10240) {
-		chunk = 10240;
-		bytes_received = ClientSocket.Receive(buffer, chunk, 0);
-
-		ClientSocket.Send(&bytes_received, sizeof(int), 0);
-
-		//Server resends until Client can receive data chunk
-		while (bytes_received == -1) {
-			bytes_received = ClientSocket.Receive(buffer, chunk, 0);
-			ClientSocket.Send(&bytes_received, sizeof(int), 0);
-		}
-
-		//Receive the rest of the data chunk
-		while (bytes_received < chunk) {
-			ofs.write(buffer, bytes_received);
-			chunk -= bytes_received;
-
-			bytes_received = ClientSocket.Receive(buffer, chunk, 0);
-
-			ClientSocket.Send(&bytes_received, sizeof(int), 0);
-
-			//Server resends until Client can receive data chunk
-			while (bytes_received == -1) {
-				bytes_received = ClientSocket.Receive(buffer, chunk, 0);
-				ClientSocket.Send(&bytes_received, sizeof(int), 0);
-			}
-
-			if (chunk == bytes_received) break;
-		}
-
-		ofs.write(buffer, bytes_received);
-		file_size -= 10240;
-		part += 10240;
-		displayDownloadProgress(part, total, file_name);
-	}
-
-	bytes_received = 0;
-	char* rest_buffer;
-	while (file_size > 0) {
-		rest_buffer = new char[file_size];
-
-		bytes_received = ClientSocket.Receive(rest_buffer, file_size, 0);
-
-		ClientSocket.Send(&bytes_received, sizeof(int), 0);
-
-		//Server resends until Client can receive data chunk
-		while (bytes_received == -1) {
-			bytes_received = ClientSocket.Receive(rest_buffer, file_size, 0);
-
-			ClientSocket.Send(&bytes_received, sizeof(int), 0);
-		}
-
-		ofs.write(rest_buffer, bytes_received);
-		file_size -= bytes_received;
-
-		delete[] rest_buffer;
-	}
-
-	displayDownloadProgress(part, total, file_name);
-	ofs.close();
-	return true;
-}
-
-bool processRequestingFile(queue<string> requesting_files)
-{
-	if (requesting_files.empty()) return false;
-
-	string message = requesting_files.front();
-	int message_size = message.size();
-
-	ClientSocket.Send(&message_size, sizeof(int), 0);
-	ClientSocket.Send(message.c_str(), message_size, 0);
-
-	return true;
 }
 
 int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
@@ -185,8 +56,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 
 	int nRetCode = 0;
 
-	if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0))
-	{
+	if (!AfxWinInit(::GetModuleHandle(NULL), NULL, ::GetCommandLine(), 0)) {
 		_tprintf(_T("<<< Fatal Error: MFC initialization failed >>>\n"));
 		nRetCode = 1;
 		return nRetCode;
@@ -196,57 +66,103 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[]) {
 		return FALSE;
 	}
 
-	ClientSocket.Create();
-	int try_time = 0;
-	while (ClientSocket.Connect(_T("192.168.1.11"), 1234) != 0)
-	{
+	sClient.Create();
+	if (sClient.Connect(_T("127.0.0.1"), 1234) == 0) {
 		cout << "\r<<< Server connection failed... Trying again...>>>\n";
-		Sleep(500);
-		try_time++;
-		if (try_time >= 3) {
-			cout << "<<< Server connection failed >>>\n";
-			return nRetCode;
-		}
+		return nRetCode;
 	}
 	cout << "<<< Server connection succeeded >>>\n\n\n";
 
-	registerAvailibleFile();
-
-	queue<string> requesting_files;
-	vector<string> downloaded;
-	string file_download;
-	int response = -1;
+	receiveDownloadableFiles(sClient);
 
 	while (1) {
-		registerRequestingFiles(requesting_files);
-
-		if (!requesting_files.empty()) {
-			while (find(downloaded.begin(), downloaded.end(), requesting_files.front()) != downloaded.end()) {
-				requesting_files.pop();
-
-				if (requesting_files.empty()) break;
-			}
-		}
-
-		while (!requesting_files.empty()) {
-			processRequestingFile(requesting_files);
-
-			if (receiveDownloadData(requesting_files.front())) {
-				downloaded.push_back(requesting_files.front());
-			}
-			requesting_files.pop();
-
-			ClientSocket.Receive(&response, sizeof(int), 0);
-		}
-
-		if (response == 0) {
-			cout << "           <<< All available files downloaded. Disconnecting... >>>\n\n\n";
-			break;
-		}
+		getRequestingFiles(thread_requesting_list, input);
+		if (!thread_requesting_list.empty()) break;
 	}
+	sendRequestingFiles(thread_requesting_list, sClient, 0);
 
-	ClientSocket.Close();
-	cout << "           <<< Disconnected! >>>\n";
+	vector<int> progress;
+	for (int i = 0; i < thread_requesting_list.size(); ++i)
+		progress.push_back(0);
+	
+	DWORD thread_ID;
+	HANDLE thread_status;
+	thread_status = CreateThread(NULL, 0, updateRequestingList, NULL, 0, &thread_ID);
+	
+	vector<int> list_of_size;
+	receiveListOfFileSize(list_of_size, sClient);
 
+	int number_of_chunks = 0;
+	Header head;
+	int file_position = -1;
+	vector<ofstream> ofs_list;
+	int rest_data = 0;
+	int bytes_received = 0;
+	int chunk_count = 0;
+	int chunk_size = 0;
+	int finish = thread_requesting_list.size();
+	do {
+		sClient.Receive((char*)&number_of_chunks, sizeof(int), 0);
+
+		while (number_of_chunks != 0) {
+			receiveHeader(head, sClient);
+
+			//Get file position
+			for (int i = 0; i < thread_requesting_list.size(); ++i) 
+				if (head.filename == thread_requesting_list[i].name) {
+					file_position = i;
+					break;
+				}
+
+			//Handle chunk position
+			if (head.position == "start") {
+				string path = "D:\\output\\" + head.filename;
+				ofstream ofs(path.c_str(), ios::app | ios::binary);
+				ofs_list.push_back(move(ofs));
+			}
+			else if (head.position == "end") {
+				--finish;
+				++chunk_count;
+				--number_of_chunks;
+				ofs_list[file_position].close();
+
+				continue;
+			}
+
+			//Determine chunk size
+			rest_data = list_of_size[file_position] - progress[file_position];
+			if (rest_data < 10240) chunk_size = rest_data;
+			else chunk_size = 10240;
+
+			//Receive data and update progress
+			bytes_received = 0;
+			receiveChunk(ofs_list[file_position], sClient, chunk_size, bytes_received);
+			progress[file_position] += bytes_received;
+
+			++chunk_count;
+			--number_of_chunks;
+
+			//Send difference after every chunk sent
+			sClient.Send(&difference, sizeof(int), 0);
+
+			//Update requesting list
+			if (difference == 1) {
+				difference = 0;
+
+				sendRequestingFiles(thread_requesting_list, sClient, start);
+				for (int i = start; i < thread_requesting_list.size(); ++i)
+					progress.push_back(0);
+
+				finish += thread_requesting_list.size() - start;
+
+				receiveListOfFileSize(list_of_size, sClient);
+			}
+
+			cout << 1.0 * progress[file_position] / list_of_size[file_position] * 100 << "\n";
+		}
+
+		if (finish == 0) break;
+	} while (1);
+	
 	return nRetCode;
 }

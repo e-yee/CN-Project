@@ -1,139 +1,197 @@
 #include "Function.h"
 
-bool checkDisconnection(int bytes_received) {
-	if (bytes_received == 0) {
+bool checkDisconnection(int error_code) {
+	if (error_code == 0 || error_code == -3) {
 		cout << "Client disconnected from Server!\n";
 		return true;
 	}
+	
 	return false;
 }
 
-void getFileList(vector<File>& file_list) {
-	string file_name = "download.txt";
-	ifstream ifs(file_name.c_str());
+void getDownloadableFiles(vector<File>& downloadable_list, string filename) {
+	ifstream ifs(filename.c_str());
 	if (!ifs.good()) {
-		cout << "Open file failed!\n";
+		cout << "Fail to open " << filename << "!\n";
 		return;
 	}
 
 	File f;
 	while (!ifs.eof()) {
-		ifs >> f.name >> f.size;
-		
-		file_list.push_back(f);
+		getline(ifs, f.name, ' ');
+		getline(ifs, f.size);
+
+		downloadable_list.push_back(f);
 	}
 
 	ifs.close();
 }
 
-void sendFileList(vector<File> file_list, CSocket& connector) {
+void sendDownloadableFiles(vector<File> downloadable_list, CSocket& sConnector) {
 	string message = "";
-	for (int i = 0; i < file_list.size(); ++i) {
-		if (i != file_list.size() - 1)
-			message += file_list[i].name + " " + file_list[i].size + "\n";
+	for (int i = 0; i < downloadable_list.size(); ++i) {
+		if (i != downloadable_list.size() - 1)
+			message += downloadable_list[i].name + " " + downloadable_list[i].size + "\n";
 		else
-			message += file_list[i].name + " " + file_list[i].size;
+			message += downloadable_list[i].name + " " + downloadable_list[i].size;
 	}
 	int message_size = message.size();
 
-	connector.Send(&message_size, sizeof(message_size));
-	connector.Send(message.c_str(), message_size);
+	sConnector.Send(&message_size, sizeof(int), 0);
+	sConnector.Send(message.c_str(), message_size, 0);
 }
 
-void getRequestingList(queue<File>& requesting_list, string message) {
+void receiveRequestingFiles(vector<File>& requesting_list, CSocket& sConnector, int& start, bool& connection) {
+	sConnector.Receive((char*)&start, sizeof(int), 0);
+
+	int message_size = 0;
+	sConnector.Receive((char*)&message_size, sizeof(int), 0);
+	if (checkDisconnection(message_size)) {
+		connection = false;
+		return;
+	}
+	
+	char* message = new char[message_size + 1];
+	sConnector.Receive(message, message_size, 0);
+	message[message_size] = '\0';
+
 	stringstream ss(message);
 	File f;
 	while (ss.good()) {
-		ss >> f.name >> f.priority;
+		getline(ss, f.name, ' ');
+		getline(ss, f.priority);
 
-		requesting_list.push(f);
+		requesting_list.push_back(f);
 	}
 }
 
-void getChunkQueue(queue<DataChunk>& chunk_queue, File requesting_file, int& file_size) {
-	ifstream ifs(requesting_file.name.c_str(), ios::binary);
+void getListOfFileSize(vector<int>& list_of_size, vector<File> requesting_list, int start) {
+	ifstream ifs;
+	int file_size = 0;
+	for (int i = start; i < requesting_list.size(); ++i) {
+		ifs.open(requesting_list[i].name, ios::binary);
+
+		ifs.seekg(0, ios::end);
+		file_size = ifs.tellg();
+		ifs.seekg(0, ios::beg);
+
+		ifs.close();
+
+		list_of_size.push_back(file_size);
+	}
+}
+
+void sendListOfFileSize(vector<int> list_of_size, CSocket& sConnector, int start) {
+	int number_of_files = list_of_size.size() - start;
+	sConnector.Send(&number_of_files, sizeof(int), 0);
+
+	int file_size = 0;
+	for (int i = start; i < list_of_size.size(); ++i) {
+		file_size = list_of_size[i];
+
+		sConnector.Send(&file_size, sizeof(int), 0);
+	}
+}
+
+void getFileHeaders(queue<Header>& file_headers, string fname) {
+	ifstream ifs(fname.c_str(), ios::binary);
 	if (!ifs.good()) {
-		cout << "Open file failed!\n";
+		cout << "Fail to open " << fname << "!\n";
 		return;
 	}
 
-	DataChunk chunk;
-	chunk.file_name = requesting_file.name;
-
-	int max_chunk_size = 0;
-	if (requesting_file.priority == "NORMAL") max_chunk_size = 6400;
-	else if (requesting_file.priority == "HIGH") max_chunk_size = 6400 * 4;
-	else max_chunk_size = 6400 * 10;
-
 	ifs.seekg(0, ios::end);
-	file_size = ifs.tellg();
+	int file_size = ifs.tellg();
 	ifs.seekg(0, ios::beg);
 
+	int max_chunk_size = 10240;
 	int number_of_chunks = file_size / max_chunk_size;
 	int rest_data = file_size % max_chunk_size;
-	char* buffer;
-	if (number_of_chunks == 0) {
-		buffer = new char[rest_data];
+	Header head;
 
-		ifs.read(buffer, rest_data);
-
-		chunk.position = "end";
-		chunk.size = to_string(rest_data);
-		chunk.content = buffer;
-
-		chunk_queue.push(chunk);
+	head.filename = fname;
+	for (int i = 0; i < number_of_chunks; ++i) {
+		if (i == 0) head.position = "start";
+		else head.position = "middle";
+		head.chunk_size = max_chunk_size;
+		file_headers.push(head);
 	}
-	else {
-		buffer = new char[max_chunk_size];
 
-		for (int i = 0; i < number_of_chunks; ++i) {
-			ifs.read(buffer, max_chunk_size);
-
-			if (i == 0) 
-				chunk.position = "start";
-			else if (i == number_of_chunks - 1) 
-				chunk.position = "end";
-			else 
-				chunk.position = "middle";
-			chunk.size = to_string(max_chunk_size);
-			chunk.content = buffer;
-
-			chunk_queue.push(chunk);
+	if (rest_data != 0) {
+		if (file_headers.empty()) {
+			head.position = "start";
+			head.chunk_size = rest_data;
 		}
-
-		if (rest_data != 0) {
-			chunk_queue.back().position = "middle";
-
-			ifs.read(buffer, rest_data);
-
-			chunk.position = "end";
-			chunk.size = to_string(rest_data);
-			chunk.content = buffer;
-
-			chunk_queue.push(chunk);
+		else {
+			head.position = "middle";
+			head.chunk_size = rest_data;
 		}
+		file_headers.push(head);
 	}
+
+	head.position = "end";
+	head.chunk_size = 0;
+	file_headers.push(head);
+
+	ifs.close();
 }
 
-void sendData(queue<queue<DataChunk>>& buffer_queue, CSocket& connector, int& response) {
-	DataChunk data;
-	queue<DataChunk> chunk_queue;
+void getFileHeadersList(vector<queue<Header>>& file_headers_list, vector<File> requesting_list, vector<File>& downloadable_list) {
+	for (int i = 0; i < requesting_list.size(); ++i) 
+		for (int j = 0; j <	downloadable_list.size(); ++j) 
+			if (requesting_list[i].name == downloadable_list[j].name) {
+				queue<Header> file_headers;
+				getFileHeaders(file_headers, requesting_list[i].name);
+				file_headers_list.push_back(file_headers);
+
+				downloadable_list.erase(downloadable_list.begin() + j);
+			}
+}
+
+void sendHeader(Header head, CSocket& sConnector) {
+	int filename_length = head.filename.size();
+	sConnector.Send(&filename_length, sizeof(int), 0);
+	sConnector.Send(head.filename.c_str(), filename_length, 0);
+
+	int position_length = head.position.size();
+	sConnector.Send(&position_length, sizeof(int), 0);
+	sConnector.Send(head.position.c_str(), position_length, 0);
+}
+
+void sendChunk(Header head, ifstream& ifs, CSocket& sConnector, bool& connection) {
+	char* buffer = new char[head.chunk_size];
+	ifs.read(buffer, head.chunk_size);
+
+	int bytes_sent = head.chunk_size;
+	sConnector.Send(buffer, bytes_sent, 0);
+
 	int bytes_received = 0;
-	while (!buffer_queue.empty()) {
-		chunk_queue = buffer_queue.front();
-		buffer_queue.pop();
+	sConnector.Receive((char*)&bytes_received, sizeof(int), 0);
 
-		data = chunk_queue.front();
-		chunk_queue.pop();
+	if (checkDisconnection(bytes_received)) {
+		delete[] buffer;
+		connection = false;
+		return;
+	}
 
-		connector.Send((char*)&data, sizeof(data));
-		connector.Receive((char*)&bytes_received, sizeof(int));
+	while (bytes_received < bytes_sent) {
+		bytes_sent -= bytes_received;
+		sConnector.Receive((char*)&bytes_received, sizeof(int), 0);
 
 		if (checkDisconnection(bytes_received)) {
-			response = 0;
+			delete[] buffer;
+			connection = false;
 			return;
 		}
-
-		if (!chunk_queue.empty()) buffer_queue.push(chunk_queue);
 	}
+
+	delete[] buffer;
+}
+
+void getNumberOfChunks(string priority, int& number_of_chunks, int file_headers_size) {
+	if (priority == "NORMAL") number_of_chunks = 1;
+	else if (priority == "HIGH") number_of_chunks = 4;
+	else number_of_chunks = 10;
+
+	number_of_chunks = file_headers_size < number_of_chunks ? file_headers_size : number_of_chunks;
 }
